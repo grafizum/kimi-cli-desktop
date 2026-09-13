@@ -1,0 +1,23 @@
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE / editor state
+.idea/
+.vscode/
+*.iml
+
+# Agent tooling / local notes
+.artifacts/
+# Owner task ledger — references local tooling, keep it out of the public repo.
+TODO.md
+
+# Windows NTFS alternate data streams (downloaded-file markers)
+*:Zone.Identifier
+
+# OS / environment files
+.env
+.env.*

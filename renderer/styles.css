@@ -1,0 +1,1444 @@
+/* ------------------------------------------------------------------ */
+/* Brand fonts                                                         */
+/* ------------------------------------------------------------------ */
+/* These are the exact webfonts the `kimi web` UI ships (extracted from  */
+/* the Kimi Code CLI bundle), so labels render identically offline.      */
+@font-face {
+  font-family: "Schibsted Grotesk Variable";
+  src: url("../assets/SchibstedGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  src: url("../assets/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme tokens                                                        */
+/* ------------------------------------------------------------------ */
+/* Palette: #050505 · #111111 · #181818 · #2A2A2A · #DFDFDF */
+:root, [data-theme="dark"] {
+  /* Tells the engine to render native widgets (scrollbars, selects, spinners)
+     in dark colours — without this Electron paints a bright/white scrollbar
+     track next to the dark sidebar. */
+  color-scheme: dark;
+  --bg: #050505;
+  --bg-raised: #111111;
+  --bg-elevated: #181818;
+  --bg-hover: #2A2A2A;
+  --border: #2A2A2A;
+  --border-strong: #3A3A3A;
+  --text: #DFDFDF;
+  --text-dim: rgba(223, 223, 223, 0.72);
+  --text-faint: rgba(223, 223, 223, 0.42);
+  --accent: #DFDFDF;
+  --accent-2: #DFDFDF;
+  --accent-soft: rgba(223, 223, 223, 0.10);
+  --accent-text: #DFDFDF;
+  --green: #8BC98A;
+  --red: #E8776F;
+  --yellow: #E0B463;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  --terminal-bg: #181818;
+  /* Scrollbars stay inside the dark palette — never a light track. */
+  --scrollbar-thumb: #2A2A2A;
+  --scrollbar-thumb-hover: #3A3A3A;
+  --scrollbar-track: transparent;
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  /* Radius scale */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+
+  --titlebar-h: 46px;
+
+  /* Kimi Web UI typography + label colors (from the `kimi web` bundle):
+     --font-ui-latin: "Schibsted Grotesk Variable", "Helvetica Neue", Arial
+     --color-text: rgba(255, 255, 255, .84) / --color-text-muted: ... .56  */
+  --font-ui: "Schibsted Grotesk Variable", "Helvetica Neue", Arial,
+    "Noto Sans SC Variable", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "Cascadia Mono", "Cascadia Code", "SF Mono",
+    Consolas, "DejaVu Sans Mono", monospace;
+  --label-text: rgba(255, 255, 255, 0.84);
+  --label-muted: rgba(255, 255, 255, 0.56);
+  --label-faint: rgba(255, 255, 255, 0.42);
+}
+
+/* Light theme — the same palette inverted (#DFDFDF surfaces, #181818 ink)
+   with softened hover/border steps so it stays calm instead of grey-on-grey. */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #EFEFEF;
+  --bg-raised: #FFFFFF;
+  --bg-elevated: #F7F7F7;
+  --bg-hover: #E4E4E4;
+  --border: #E2E2E2;
+  --border-strong: #C9C9C9;
+  --text: #181818;
+  --text-dim: #4A4A4A;
+  --text-faint: #8C8C8C;
+  --accent: #181818;
+  --accent-2: #2A2A2A;
+  --accent-soft: rgba(24, 24, 24, 0.06);
+  --accent-text: #181818;
+  --green: #1F7A34;
+  --red: #B3261E;
+  --yellow: #8A5A00;
+  --shadow: 0 16px 40px rgba(17, 17, 17, 0.12);
+  --terminal-bg: #FFFFFF;
+  --scrollbar-thumb: #D2D2D2;
+  --scrollbar-thumb-hover: #B4B4B4;
+  --scrollbar-track: transparent;
+  --overlay: rgba(24, 24, 24, 0.28);
+
+  --label-text: rgba(0, 0, 0, 0.88);
+  --label-muted: rgba(0, 0, 0, 0.58);
+  --label-faint: rgba(0, 0, 0, 0.46);
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+* { box-sizing: border-box; }
+
+/* Test-run banner: e2e windows drive a fake kimi and must be unmistakable
+   (a leftover, interrupted test window once looked exactly like the app). */
+.test-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 5px 16px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1F1500;
+  background: #FFD54A;
+  border-bottom: 1px solid #B98A00;
+  pointer-events: none;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hidden { display: none !important; }
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ------------------------------------------------------------------ */
+/* Top bar                                                             */
+/* ------------------------------------------------------------------ */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--titlebar-h);
+  padding: 0 10px 0 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  -webkit-app-region: no-drag;
+}
+
+.logo { display: block; border-radius: 5px; }
+
+/* Sidebar show/hide toggle in the custom title bar */
+.titlebar-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+  transition: background 0.12s, color 0.12s;
+}
+.titlebar-btn:hover { background: var(--bg-hover); color: var(--text); }
+.titlebar-btn[aria-pressed="true"] { color: var(--text-faint); }
+
+.topbar-actions { display: flex; gap: 8px; margin-left: auto; -webkit-app-region: no-drag; }
+
+/* Custom window controls (Windows / Linux) */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  width: 36px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.win-btn:hover { background: var(--bg-hover); color: var(--text); }
+.win-btn.close:hover { background: #d94a41; color: #fff; }
+
+/* macOS gets its native traffic lights instead */
+html[data-platform="darwin"] .window-controls { display: none; }
+html[data-platform="darwin"] #topbar { padding-left: 84px; }
+html[data-platform="darwin"] .brand {
+  -webkit-app-region: no-drag;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.05s;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn:active { transform: translateY(1px); }
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--bg);
+  font-weight: 600;
+}
+.btn.primary:hover { background: var(--accent); border-color: transparent; filter: brightness(1.08); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { background: var(--bg-hover); border-color: var(--border); }
+
+.icon-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  line-height: 1;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ------------------------------------------------------------------ */
+/* Icons                                                               */
+/* ------------------------------------------------------------------ */
+/* Every icon is an inline SVG (see ICONS in app.js) — never a text glyph.
+   A glyph only draws if some font installed on the machine covers its
+   codepoint; when none does the OS paints an empty tofu box in the middle of
+   the button, which looks like a graphical bug and differs machine to machine.
+   SVG has no font dependency, so these render identically everywhere. */
+.ico {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  display: inline-block;
+  vertical-align: -0.14em;
+  pointer-events: none;
+}
+.btn .ico { width: 13.5px; height: 13.5px; vertical-align: -0.17em; }
+.icon-btn .ico { width: 15px; height: 15px; }
+.add-tab .ico { width: 15px; height: 15px; vertical-align: -0.2em; }
+.searchbar .icon-btn .ico { width: 13px; height: 13px; }
+.toast-icon .ico { width: 10px; height: 10px; }
+.tab .tab-kind .ico { width: 11px; height: 11px; }
+.tab .tab-close .ico { width: 11px; height: 11px; vertical-align: -0.08em; }
+.si-more .ico { width: 14px; height: 14px; }
+.ctx-icon .ico { width: 13px; height: 13px; }
+.si-meta .branch .ico { width: 10px; height: 10px; vertical-align: -0.18em; }
+
+.mini {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  padding: 5px 12px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.mini:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ------------------------------------------------------------------ */
+/* Layout                                                              */
+/* ------------------------------------------------------------------ */
+#main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#sidebar {
+  width: var(--sidebar-w, 292px);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Collapsed = fully hidden (toggled from the title bar / Ctrl+B) */
+body.sidebar-collapsed #sidebar,
+body.sidebar-collapsed #sidebar-splitter { display: none; }
+
+/* Drag handle between the session history and the terminal */
+#sidebar-splitter {
+  flex: 0 0 auto;
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  touch-action: none;
+}
+#sidebar-splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.12s;
+}
+#sidebar-splitter:hover::after,
+#sidebar-splitter:focus-visible::after,
+body.resizing #sidebar-splitter::after { background: var(--border-strong); }
+#sidebar-splitter:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing #topbar,
+body.resizing #sidebar { transition: none; }
+
+.sidebar-section {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 8px;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-title {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--label-faint);
+}
+
+#session-filter {
+  margin: 6px 14px 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+#session-filter:focus { border-color: var(--accent); }
+#session-filter::placeholder { color: var(--text-faint); }
+
+.session-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 8px 14px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  /* Same tone as the sidebar so the scroll gutter blends in — never a light
+     strip running down the history list. */
+  background: var(--bg-raised);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Thin, rounded scrollbars everywhere — always themed, never the OS default */
+.session-list::-webkit-scrollbar,
+.settings-scroll::-webkit-scrollbar,
+.config-editor::-webkit-scrollbar,
+.settings-tabs::-webkit-scrollbar { width: 6px; height: 6px; }
+.session-list::-webkit-scrollbar-thumb,
+.settings-scroll::-webkit-scrollbar-thumb,
+.config-editor::-webkit-scrollbar-thumb,
+.settings-tabs::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+.session-list::-webkit-scrollbar-thumb:hover,
+.settings-scroll::-webkit-scrollbar-thumb:hover,
+.config-editor::-webkit-scrollbar-thumb:hover,
+.settings-tabs::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+.session-list::-webkit-scrollbar-track,
+.settings-scroll::-webkit-scrollbar-track,
+.config-editor::-webkit-scrollbar-track,
+.settings-tabs::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+.session-list::-webkit-scrollbar-corner,
+.settings-scroll::-webkit-scrollbar-corner,
+.settings-tabs::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
+
+/* Session groups — project folders by default, date buckets as the other mode.
+   The label is a <button> because it folds the group, styled as the compact
+   Kimi-web label it replaced. */
+.session-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--label-faint);
+  padding: 10px 8px 4px;
+  cursor: pointer;
+}
+.session-group-label:hover { color: var(--text-dim); }
+.session-group-label:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
+.sgl-caret { display: inline-flex; transition: transform 0.12s ease; }
+.sgl-caret .ico { width: 10px; height: 10px; vertical-align: 0; }
+.session-group-label[aria-expanded="false"] .sgl-caret { transform: rotate(-90deg); }
+.sgl-text { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sgl-count {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  letter-spacing: 0;
+  color: var(--label-faint);
+  background: var(--bg-hover);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* Compact session rows — smaller footprint than before, still rounded */
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--label-text);
+  font-family: var(--font-ui);
+  border-radius: 10px;
+  padding: 6px 9px;
+  margin-bottom: 1px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.session-item:hover { background: var(--bg-hover); border-color: var(--border); }
+
+.session-item .si-body { flex: 1 1 auto; min-width: 0; }
+.session-item .si-title {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--label-text);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-item .si-meta {
+  font-size: 10.5px;
+  color: var(--label-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.session-item .si-meta .branch {
+  color: var(--yellow);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+/* Row actions trigger — hidden until the row is hovered/focused */
+.session-item .si-more {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--label-faint);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.session-item:hover .si-more,
+.session-item.menu-open .si-more,
+.session-item .si-more:focus-visible { opacity: 1; color: var(--label-text); }
+.session-item .si-more:hover { background: var(--border); color: var(--label-text); }
+
+.session-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 18px 12px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* Rich empty state: tells the user where sessions live and how to add some. */
+.session-empty .se-title {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.session-empty .se-path {
+  display: block;
+  margin: 10px auto 4px;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the meaningful tail of long paths visible */
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.session-empty .se-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.session-empty .se-actions .btn {
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+/* Settings → CLI: the usual install locations of the kimi executable. */
+.candidate-path {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  vertical-align: bottom;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sidebar footer / kimi status                                        */
+/* ------------------------------------------------------------------ */
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  flex: 0 0 auto;
+}
+
+.kimi-status { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* Settings gear — bottom-left, immediately left of the kimi version label */
+.gear-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.12s, color 0.12s, transform 0.18s;
+}
+/* The gear lives on the sidebar footer surface — a hover *fill* reads as the
+   button changing colour, so only the icon reacts. */
+.gear-btn:hover { background: transparent; color: var(--text); transform: rotate(24deg); }
+.gear-btn:focus-visible { outline: none; background: transparent; color: var(--text); }
+.gear-btn:active { background: transparent; }
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: 0 0 auto;
+}
+.status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.bad { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.status-dot.busy { background: var(--yellow); animation: pulse 1s infinite; }
+
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+.status-text {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  color: var(--label-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-text strong { color: var(--label-text); font-weight: 600; }
+.status-text .wsl-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  vertical-align: 1px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Workspace                                                           */
+/* ------------------------------------------------------------------ */
+#workspace {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--terminal-bg);
+  position: relative;
+}
+
+#tabbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px 0;
+  /* Deeper than the surrounding chrome so the active tab (which wears the
+     terminal colour) still reads as elevated in *both* themes — in light mode
+     a white tab on a white bar would otherwise be invisible. */
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  overflow-x: auto;
+}
+#tabbar::-webkit-scrollbar { height: 0; }
+
+.tabs { display: flex; align-items: center; gap: 2px; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 9px 14px;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  cursor: pointer;
+  max-width: 250px;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.tab:hover { background: var(--bg-hover); color: var(--text); }
+.tab.active {
+  /* Wears the terminal colour and joins it (no bottom border) — the stronger
+     outline keeps it legible where tab bar and terminal are both light. */
+  background: var(--terminal-bg);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.tab .tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+.tab .tab-kind { font-size: 11px; opacity: 0.85; }
+.tab .tab-close {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+  padding: 1px 3px;
+}
+.tab .tab-close:hover { background: var(--border-strong); color: var(--text); }
+.tab .tab-status-badge { font-size: 10px; color: var(--text-faint); }
+.tab.exited { opacity: 0.7; }
+.tab.exited .tab-status-badge { color: var(--red); }
+
+.add-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 15px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  border-radius: var(--r-sm);
+  /* Deliberately no vertical nudge: #tabbar centres its children, which already
+     puts this button on the tabs' optical row (measured centre delta 0). An
+     earlier translateY(-9px) tried to compensate for the tabs' padding a second
+     time, floating the "+" 9px above the tab label. */
+  align-self: center;
+}
+.add-tab:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ----------------------------------------------------------------------
+   Splash screen — covers start-up until the first terminal paints.
+   ---------------------------------------------------------------------- */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  transition: opacity 0.45s ease;
+}
+#splash.splash-hide { opacity: 0; pointer-events: none; }
+#splash[hidden] { display: none; }
+
+.splash-box { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.splash-logo { animation: splash-pulse 1.6s ease-in-out infinite; }
+.splash-word {
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.splash-bar {
+  width: 180px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.splash-bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: splash-slide 1.2s ease-in-out infinite;
+}
+@keyframes splash-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.72; transform: scale(1.04); }
+}
+@keyframes splash-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+#terminal-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.terminal-host { position: absolute; inset: 0; overflow: hidden; }
+.term-pane { position: absolute; inset: 0; overflow: hidden; }
+/* Padding must live on .xterm itself: FitAddon only subtracts the xterm
+   element's padding when computing cols/rows. Combined with the overflow
+   clipping above, this keeps the terminal inside its stage instead of
+   spilling over the status bar. */
+.terminal-host .xterm { height: 100%; padding: 12px 14px 14px; }
+.terminal-host .xterm-viewport { background-color: transparent !important; }
+
+/* ------------------------------------------------------------------ */
+/* Framed session panel (default)                                       */
+/* ------------------------------------------------------------------ */
+/* The session reads as a card belonging to the app instead of a slab bolted
+   onto it: inset from the tab strip and status bar, rounded, hairline border.
+   The pane, xterm and the active tab all resolve to --terminal-bg, and Kimi's
+   TUI paints no background of its own (it emits no 48;2; / 48;5; / ESC[4Nm
+   sequence), so the CLI's output can never show a seam against this frame.
+   body.term-classic restores the plain edge-to-edge terminal — Settings →
+   Appearance switches back, so the restyle needs no git surgery to undo. */
+body:not(.term-classic) #terminal-stage { background: var(--bg); }
+body:not(.term-classic) .terminal-host {
+  /* Left/right match #tabbar's 12px padding, so the first tab's edge lines up
+     with the card's edge rather than drifting a couple of pixels. */
+  inset: 0 12px 12px;
+  background: var(--terminal-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+/* The card is the divider now — extra hairlines on top of it just read as
+   clutter, so the strip and status bar drop theirs while the card is in use. */
+body:not(.term-classic) #tabbar,
+body:not(.term-classic) #statusbar { border-color: transparent; }
+/* The active tab joins the card it belongs to. */
+body:not(.term-classic) .tab.active {
+  border-color: var(--border);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+
+/* Per-session loading cover — see createPaneLoader() in app.js. It hides the
+   blank, not-yet-measured terminal between the PTY spawning and the CLI's first
+   paint, so a slow start shows the Kimi mark instead of half-drawn rows. */
+.pane-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  /* Matches the pane it covers (not --bg): in the framed style the pane is
+     --terminal-bg, so a --bg cover would flash a darker rectangle first. */
+  background: var(--terminal-bg);
+  /* Decoration, not a gate — never swallow a click aimed at the terminal. */
+  pointer-events: none;
+  animation: pl-in 0.2s ease;
+}
+.pane-loader.pl-out { animation: pl-out 0.3s ease forwards; }
+
+.pl-spinner { position: relative; width: 58px; height: 58px; display: grid; place-items: center; }
+.pl-ring { position: absolute; inset: 0; width: 100%; height: 100%; animation: pl-spin 1.15s linear infinite; }
+.pl-track { fill: none; stroke: var(--border-strong); stroke-width: 2.5; }
+.pl-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 10 220;
+  animation: pl-dash 1.6s ease-in-out infinite;
+}
+.pl-mark { position: relative; width: 26px; height: 26px; color: var(--text-dim); animation: pl-pulse 1.7s ease-in-out infinite; }
+.pl-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.pl-bar { width: 150px; height: 2px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.pl-bar span { display: block; height: 100%; width: 38%; border-radius: 2px; background: var(--accent); animation: pl-slide 1.3s ease-in-out infinite; }
+
+@keyframes pl-spin { to { transform: rotate(360deg); } }
+@keyframes pl-dash { 0%, 100% { stroke-dasharray: 10 220; } 50% { stroke-dasharray: 100 220; } }
+@keyframes pl-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes pl-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+@keyframes pl-in { from { opacity: 0; } }
+@keyframes pl-out { to { opacity: 0; } }
+
+.exit-chip {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  z-index: 5;
+}
+
+/* ------------------------------------------------------------------ */
+/* Welcome / onboarding panel                                          */
+/* ------------------------------------------------------------------ */
+.welcome {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background:
+    radial-gradient(1000px 500px at 70% -10%, var(--accent-soft), transparent 60%),
+    var(--terminal-bg);
+}
+
+.welcome-card {
+  max-width: 660px;
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 34px 36px;
+  box-shadow: var(--shadow);
+}
+
+.welcome-card h1 { margin: 0 0 6px; font-size: 20px; }
+.welcome-card p.lead { color: var(--text-dim); margin: 0 0 18px; line-height: 1.55; }
+
+.welcome-card h2 {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  margin: 20px 0 8px;
+}
+
+.install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.install-step .os-tag {
+  flex: 0 0 auto;
+  width: 74px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-text);
+  padding-top: 5px;
+}
+.install-step code {
+  flex: 1 1 auto;
+  display: block;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.install-step .copy-btn { flex: 0 0 auto; margin-top: 2px; }
+
+.welcome-actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+.welcome-note { color: var(--text-faint); font-size: 11.5px; margin-top: 16px; line-height: 1.6; }
+
+/* ------------------------------------------------------------------ */
+/* Search bar                                                          */
+/* ------------------------------------------------------------------ */
+.searchbar {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 6px 10px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+.searchbar input {
+  width: 220px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+.searchbar input::placeholder { color: var(--text-faint); }
+.search-count { font-size: 11px; color: var(--text-dim); min-width: 34px; text-align: center; }
+
+/* ------------------------------------------------------------------ */
+/* Status bar                                                          */
+/* ------------------------------------------------------------------ */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.status-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+}
+#statusbar .spacer { flex: 1 1 auto; }
+
+/* ------------------------------------------------------------------ */
+/* Modals                                                              */
+/* ------------------------------------------------------------------ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  width: 540px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  padding: 26px 28px;
+  box-shadow: var(--shadow);
+}
+.modal-wide { width: 680px; }
+
+.modal h2 { margin: 0 0 14px; font-size: 16px; }
+.modal-hint { color: var(--text-dim); font-size: 12px; line-height: 1.6; margin: 0 0 14px; }
+.modal-hint code { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-xs); padding: 1px 6px; font-size: 11.5px; }
+
+.field { display: block; margin-bottom: 14px; }
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.field input[type="text"], .field input[type="number"], .field select, .field textarea, .field-row input[type="text"] {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  font-family: inherit;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+.field textarea { resize: vertical; min-height: 84px; font-family: inherit; line-height: 1.5; }
+.field-hint { display: block; font-size: 11px; color: var(--text-faint); margin-top: 5px; line-height: 1.5; }
+.field-hint code { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-xs); padding: 1px 5px; font-family: var(--font-mono); font-size: 10.5px; }
+.settings-note { margin: 0 0 10px; }
+.settings-inline-hint { margin-top: 0; flex: 1 1 auto; min-width: 0; }
+.field-row { display: flex; gap: 8px; align-items: center; }
+.field-row input { flex: 1 1 auto; }
+.field.grow { flex: 1 1 auto; }
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mode-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--bg);
+}
+.mode-card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+/* The radio is a hidden input — the card's own accent border/background is the
+   selected state. Left visible, the native control paints as a raw OS widget
+   (a small box on some Linux themes) inside an otherwise custom card. */
+.mode-card input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.mode-card:focus-within { border-color: var(--border-strong); }
+.mode-name { font-weight: 600; font-size: 12.5px; }
+.mode-desc { color: var(--text-dim); font-size: 11px; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.modal-actions .spacer { flex: 1 1 auto; }
+
+.settings-scroll {
+  overflow-y: auto;
+  padding-right: 4px;
+  /* Fill the modal so the actions row stays pinned while a tab scrolls. */
+  flex: 1 1 auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+.settings-scroll fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px 6px;
+  margin: 0 0 16px;
+}
+.settings-scroll legend {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  padding: 0 6px;
+}
+
+/* Tab strip at the top of Settings — config.toml / Appearance / … */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.settings-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--label-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background 0.12s, color 0.12s;
+}
+.settings-tab:hover { color: var(--label-text); background: var(--bg-hover); }
+.settings-tab:focus-visible { outline: none; color: var(--label-text); }
+.settings-tab[aria-selected="true"] {
+  background: var(--bg-hover);
+  color: var(--label-text);
+  font-weight: 600;
+}
+
+.settings-panel { display: block; }
+
+/* Theme picker (Appearance) */
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.theme-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.theme-card:hover { border-color: var(--border-strong); }
+.theme-card:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.theme-card input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.theme-swatch {
+  width: 40px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  flex: 0 0 auto;
+}
+.theme-swatch.dark { background: linear-gradient(135deg, #181818 0 52%, #050505 52% 100%); }
+.theme-swatch.light { background: linear-gradient(135deg, #FFFFFF 0 52%, #DFDFDF 52% 100%); }
+.theme-name { font-size: 12.5px; font-weight: 600; color: var(--label-text); }
+
+/* config.toml panel footer */
+.config-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.config-actions .spacer { flex: 1 1 auto; }
+
+.modal-actions-note { font-size: 11.5px; color: var(--text-faint); }
+
+/* ------------------------------------------------------------------ */
+/* Session row context menu                                           */
+/* ------------------------------------------------------------------ */
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 210px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.ctx-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  color: var(--label-text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ctx-menu button:hover { background: var(--bg-hover); }
+.ctx-menu button .ctx-icon { width: 15px; display: inline-flex; align-items: center; justify-content: center; opacity: 0.85; flex: 0 0 auto; }
+.ctx-menu button .ctx-sub { margin-left: auto; font-size: 10.5px; color: var(--label-faint); }
+.ctx-menu .ctx-sep { height: 1px; background: var(--border); margin: 5px 6px; }
+.ctx-menu .ctx-label {
+  padding: 7px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--label-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-menu .ctx-note {
+  padding: 4px 10px 7px;
+  font-size: 11px;
+  color: var(--label-faint);
+  line-height: 1.45;
+}
+.ctx-menu .ctx-note code { font-family: var(--font-mono); font-size: 10.5px; }
+
+/* ------------------------------------------------------------------ */
+/* Toasts                                                              */
+/* ------------------------------------------------------------------ */
+/* Notifications sit in the bottom-left corner, stacked upward above the status
+   bar, and slide in from the edge they are anchored to. */
+.toast-host {
+  position: fixed;
+  bottom: 46px;
+  left: 16px;
+  right: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  z-index: 200;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  color: var(--text);
+  border-radius: var(--r-md);
+  padding: 11px 14px 11px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow);
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  max-width: 380px;
+}
+.toast.leaving { animation: toast-out 0.24s ease forwards; }
+.toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toast-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+.toast.error { border-left-color: var(--red); }
+.toast.ok { border-left-color: var(--green); }
+.toast.error .toast-icon { background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); }
+.toast.ok .toast-icon { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-10px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(-10px); } }
+
+/* ------------------------------------------------------------------ */
+/* Kimi CLI config.toml editor                                         */
+/* ------------------------------------------------------------------ */
+.config-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.config-path-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.config-path code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 12px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.config-editor {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  padding: 14px 16px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  outline: none;
+  tab-size: 2;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.config-editor:focus { border-color: var(--accent); }
+.config-editor::placeholder { color: var(--text-faint); }
+
+.config-status {
+  min-height: 18px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.config-status.ok { color: var(--green); }
+.config-status.err { color: var(--red); }

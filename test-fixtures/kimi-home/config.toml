@@ -1,0 +1,5 @@
+# Kimi Code CLI configuration (config.toml)
+# Fixture file used by scripts/e2e-test.js — proves the Settings editor loads
+# an existing config.toml from KIMI_CODE_HOME on startup.
+
+# model = "kimi-k2"

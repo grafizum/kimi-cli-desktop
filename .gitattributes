@@ -1,0 +1,12 @@
+# Line-ending policy
+# - Shell scripts MUST be LF: CRLF breaks bash ("set: pipefail\r: invalid option").
+# - Everything else: normalized to LF in the repo; git handles checkout.
+*.sh text eol=lf
+# The fake CLI fixtures are executed directly (shebang) — a CRLF shebang is fatal.
+test-fixtures/bin/kimi text eol=lf
+*.js text
+*.json text
+*.md text
+*.yml text
+*.yaml text
+*.ps1 text

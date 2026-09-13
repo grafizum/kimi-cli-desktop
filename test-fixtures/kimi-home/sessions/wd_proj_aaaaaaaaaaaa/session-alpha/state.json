@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "cwd": "C:\\Users\\dev\\project-alpha",
+  "createdAt": 1786000000000,
+  "updatedAt": 1786000123000,
+  "title": "Add payment webhook",
+  "lastPrompt": "Handle stripe refunds",
+  "gitBranch": "feat/webhooks",
+  "custom": {}
+}

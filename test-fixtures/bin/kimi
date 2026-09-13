@@ -1,0 +1,29 @@
+#!/bin/sh
+# Fake Kimi Code CLI used by scripts/e2e-test.js (and the PTY check in
+# scripts/smoke-test.js) — never shipped to users. POSIX twin of kimi.cmd, so
+# the suites run on Linux and macOS as well as Windows.
+#
+# Contract with the tests, kept identical to kimi.cmd:
+#   --version  -> a version-like token kimi-detect accepts
+#   login      -> device-login URL + user code
+#   otherwise  -> echo the argv (so --session / --prompt are visible), read one
+#                 line, echo it back, then exit
+
+case "$1" in
+  --version)
+    echo "kimi 9.9.9-test"
+    exit 0
+    ;;
+  login)
+    echo "OPEN https://example.com/kimi/device"
+    echo "ENTER CODE: ABCD-EFGH"
+    exit 0
+    ;;
+esac
+
+echo "KIMI-TUI-STARTED args=[$*]"
+printf 'INPUT: '
+read -r kimi_line || kimi_line=''
+echo "YOU-TYPED:$kimi_line"
+echo "KIMI-REASONING-STREAMED-OK"
+exit 0

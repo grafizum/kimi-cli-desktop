@@ -1,0 +1,217 @@
+<div align="center">
+
+<img src="assets/icon.png" width="96" alt="Kimi Code Desktop logo" />
+
+# Kimi Code Desktop
+
+**An unofficial, open-source desktop shell for the [Kimi Code CLI](https://www.kimi.com/code/docs/en/) — real terminal sessions, session history, and quick tasks, in one app.**
+
+[![CI](https://github.com/grafizum/kimi-cli-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/grafizum/kimi-cli-desktop/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/grafizum/kimi-cli-desktop?include_prereleases&label=release)](https://github.com/grafizum/kimi-cli-desktop/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20tested%20·%20macOS%20untested-orange)](#-install)
+![Status](https://img.shields.io/badge/status-beta-yellow)
+[![Unofficial](https://img.shields.io/badge/status-unofficial%20project-red)](#-legal-notice)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+[Install](#-install) · [Features](#-features) · [Screenshots](#-screenshots) · [Usage](#-usage) · [Build from source](#-build-from-source) · [Troubleshooting](#-troubleshooting)
+
+<img src="docs/screenshots/main.png" alt="Kimi Code Desktop main window: session history sidebar, tabs and a live terminal" width="820" />
+
+</div>
+
+---
+
+> [!IMPORTANT]
+> **Unofficial project — not associated with the official Kimi developers.**
+> This repository and app are an independent, community-built wrapper around the publicly available `kimi` CLI. They are **not associated with, affiliated with, authorized by, endorsed by, sponsored by, or in any way officially connected with Moonshot AI (the official Kimi developers)** or any of its subsidiaries or affiliates. "Kimi" and related names are trademarks of their respective owners; any use here is purely descriptive, to identify which tool this app works with — it implies no relationship. No official code, assets, or credentials are included or redistributed. See [Legal notice](#-legal-notice).
+
+> [!NOTE]
+> **Status: beta.** Windows and Linux are the tested platforms. The macOS build is **untested so far** (no Apple hardware has run this code yet) — treat the `dmg` as experimental. Expect rough edges and please [report anything you hit](https://github.com/grafizum/kimi-cli-desktop/issues).
+
+It does **not** reimplement the agent through an API — it runs the *real* `kimi` CLI in a pseudo-terminal, so you get the complete, up-to-date TUI with all of its features: tools, MCP servers, plan mode, permission prompts, and reasoning panels.
+
+## ✨ Features
+
+- **Real interactive sessions** — the actual Kimi Code TUI renders inside xterm.js, reasoning included. Every CLI feature just works: slash commands, `/plan`, `/fork`, MCP, approvals, keyboard shortcuts.
+- **Multiple concurrent sessions** — each session gets its own tab with its own process. Switch with `Ctrl+Tab`, close with the ✕.
+- **Session history** — reads the CLI's own on-disk history (`~/.kimi-code/sessions/`), grouped by date, searchable, with project name, git branch and last activity. Click any session to **resume** it where you left off, or hit the folder icon to open the sessions directory and drop in a history from another machine.
+- **Session actions** — resume · fork into a new session (`kimi fork`) · export as ZIP (`kimi export`) · copy session ID.
+- **Quick tasks** — run one-shot prompts non-interactively (`kimi -p "…"`) without opening a full session.
+- **In-app sign-in** — the device-code flow runs in a session tab and the sign-in page opens in your browser automatically.
+- **WSL support (Windows)** — detects a `kimi` CLI installed inside a WSL distro, runs it through `wsl.exe` with a proper TTY, and reads its session history over the WSL filesystem.
+- **config.toml editor** — the first Settings tab loads `<KIMI_CODE_HOME>/config.toml` and writes it back with `Ctrl+S`.
+- **Dark & light theme**, custom title bar, resizable sidebar, find-in-terminal, clickable links, font zoom — the details that make a terminal app feel native.
+
+## 📦 Install
+
+### One command
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.ps1 | iex
+```
+
+**Linux** / **macOS**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.sh | bash
+```
+
+The script picks the right build for your OS and architecture from the [latest release](https://github.com/grafizum/kimi-cli-desktop/releases/latest) and installs it:
+
+| OS | What you get |
+| --- | --- |
+| Windows | Portable `exe` in `%LOCALAPPDATA%\Programs\Kimi Code Desktop` + Start Menu & Desktop shortcuts |
+| Linux | `AppImage` in `~/.local/bin` + app-menu entry (works even without FUSE — it auto-extracts) |
+| macOS | `dmg` opened in Finder — drag the app into Applications |
+
+> [!NOTE]
+> The app drives the **[Kimi Code CLI](https://www.kimi.com/code/docs/en/)** — if it isn't installed yet, the installer offers to fetch it for you (answer `Y`). You can also skip the prompt with `KCD_INSTALL_CLI=0` (or set it to `1` to auto-install, no questions asked).
+
+> [!TIP]
+> Windows SmartScreen may warn about the unsigned `exe`. That's expected for open-source apps without a code-signing certificate — choose **More info → Run anyway**, or verify the build yourself (see [Build from source](#-build-from-source)).
+
+### Download manually
+
+Grab an installer straight from [**Releases**](https://github.com/grafizum/kimi-cli-desktop/releases/latest):
+
+| File | For |
+| --- | --- |
+| `Kimi-Code-Desktop-<version>-x64-portable.exe` | Windows — single file, no install |
+| `Kimi-Code-Desktop-Setup-<version>-x64.exe` | Windows — NSIS installer |
+| `Kimi-Code-Desktop-<version>-x86_64.AppImage` | Linux x86-64 |
+| `Kimi-Code-Desktop-<version>-arm64.AppImage` | Linux ARM64 |
+| `Kimi-Code-Desktop-<version>-<arch>.dmg` | macOS (Apple Silicon & Intel) |
+
+## 🖼 Screenshots
+
+| Main window — sessions, tabs, live terminal | Settings — config.toml editor, theme, CLI options |
+| --- | --- |
+| <img src="docs/screenshots/main.png" alt="Main window" width="480" /> | <img src="docs/screenshots/settings.png" alt="Settings with config.toml editor" width="480" /> |
+
+## 🚀 Usage
+
+| Action | How |
+| --- | --- |
+| New interactive session | `＋ New session` (or `Ctrl+T`) — pick a folder and a permission mode |
+| Resume a previous session | Click any entry in the **Previous sessions** sidebar (kimi resumes it in the folder it was created in) |
+| One-shot task | `⚡ Quick task` — type a prompt, it runs as `kimi -p` |
+| Session actions | `⋯` on a history row: resume · fork · export ZIP · copy ID |
+| Sign in / out | **Settings → Account → Sign in to Kimi…** |
+| Edit `config.toml` | **Settings → config.toml** (the file is already loaded) |
+| Switch dark / light theme | **Settings → Appearance** (live preview) |
+| Open the sessions folder | Folder icon next to **Previous sessions** |
+| Resize / hide history | Drag the sidebar divider · icon at top-left or `Ctrl+B` |
+| Switch sessions | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Find in terminal | `Ctrl+Shift+F` |
+| Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` (right-click pastes on Windows/Linux) |
+| Font size | `Ctrl+=`, `Ctrl+-`, `Ctrl+0` |
+
+**Inside a session** everything is the CLI's own TUI: type `/help` for its command reference, `/sessions` to browse, `/title` to rename, `/export-md` to export a conversation, and so on.
+
+## 🔧 Requirements
+
+- **The [Kimi Code CLI](https://www.kimi.com/code/docs/en/)** — the app detects it automatically; if it's missing you'll get platform-specific install commands:
+  - Windows: `irm https://code.kimi.com/kimi-code/install.ps1 | iex`
+  - macOS / Linux: `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`
+  - Any OS (npm): `npm install -g @moonshot-ai/kimi-code`
+- **Windows:** Git for Windows (the CLI uses its bundled Git Bash). WSL users: everything works through the distro instead.
+- **Linux:** FUSE for AppImages (Ubuntu ≥ 22.04 ships it) — the installer falls back to an extracted layout if it's missing.
+- The packaged app bundles its own Electron runtime; **no Node.js needed** to run it.
+
+## 🛠 Build from source
+
+```bash
+git clone https://github.com/grafizum/kimi-cli-desktop.git
+cd kimi-cli-desktop
+npm install
+npm run dev        # run the app from source — no packaging, no install
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | **Preview the live source.** Runs the app straight out of this folder with DevTools open and the renderer's console forwarded to your terminal. Edit a file, press `Ctrl+R`, and you're looking at the change — there is no packaged build to keep in sync |
+| `npm start` | The same app without the dev extras (no DevTools, quieter terminal) |
+| `npm run smoke` | Unit-style checks (session parsing, detection, WSL command building, UI contract, terminal plumbing, packaging integrity) |
+| `npm run e2e` | Full end-to-end test with a fake `kimi` binary — no real CLI or account needed (needs `npm install` + a desktop session) |
+| `npm run e2e:wsl` | E2E against a real WSL-installed CLI (Windows + WSL only) |
+| `npm run dist` | Package for the current OS via electron-builder |
+| `npm run dist:win` / `dist:mac` / `dist:linux` | Package for a specific OS |
+
+> [!TIP]
+> **You never need to build to test a change.** `npm run dev` runs the real app from source (real CLI detection, real sessions, real PTY). The `dist/` installers are only for shipping a release — an installed build will *not* pick up your edits.
+
+The e2e suite uses `test-fixtures/` (a fake `kimi` executable and a synthetic data home) — nothing outside the project is touched. The fake CLI ships as both a Windows `.cmd` and a POSIX shim, so the suite runs on Windows, Linux and macOS.
+
+> [!NOTE]
+> Package on the OS you are targeting (`npm run dist:win` on Windows, and so on). The terminal backend is a native module, so a cross-built bundle would carry the wrong binary for the target.
+
+### Releasing
+
+Releases are automated by GitHub Actions: push a tag and installers for all three OSes are built and attached to the release.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+## 🔒 Security & privacy
+
+- The app stores **no secrets of its own** — no keys, tokens, or account data are embedded or copied. Sign-in is handled entirely by the official CLI (device-code flow); credentials live wherever the CLI keeps them (`~/.kimi-code/`).
+- The app makes **no network calls on its own** — it only spawns the local `kimi` binary and opens links/sign-in pages in your browser.
+- App preferences (paths, fonts, theme) are a plain local `settings.json`. Session history is read-only from the CLI's own storage; nothing is sent anywhere.
+- **Paths are genericized for display.** Any path the app *shows* (status bar, detected CLI path, `config.toml` location, session folder, export confirmation) has your home directory collapsed to `~` on Linux/macOS/WSL and `%USERPROFILE%` on Windows, so your account name is never on screen — handy for screenshots and screen shares. The app still uses the real paths internally.
+
+## 🧩 How it works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Renderer (xterm.js terminals, sidebar, tabs, modals)       │
+└──────────────▲──────────────────────────────────▲────────────┘
+        IPC (contextBridge)                 PTY data / exit / title
+┌──────────────┴──────────────────────────────────┴────────────┐
+│  Main process (Electron)                                     │
+│   • src/kimi-detect.js — find `kimi` + version               │
+│   • src/sessions.js — scan ~/.kimi-code/sessions             │
+│   • src/pty.js — spawn `kimi` in a PTY (node-pty, N-API)     │
+│   • src/settings.js — app preferences                        │
+└──────────────────────────────────────────────────────────────┘
+                            │ spawn (PTY)
+                     ┌──────▼──────┐
+                     │  kimi CLI   │  ← the real agent, unmodified
+                     └─────────────┘
+```
+
+## ❓ Troubleshooting
+
+- **"Kimi Code CLI not found" but it's installed** — set the path manually in **Settings → Kimi CLI**, or hit **Re-detect** after installing. Detection checks PATH, `npm prefix -g`, and common install locations (including WSL distros on Windows).
+- **A session won't resume** — kimi only resumes a session from the folder it was created in (`kimi --session <id>` refuses anywhere else). If you moved or renamed the project, the app offers to recreate that folder and resume; if it can't, it tells you and copies the exact `cd "…" && kimi -r <id>` command instead of opening a tab that dies.
+- **History doesn't match your terminal sessions** — make sure `KIMI_CODE_HOME` in Settings matches the one your terminal uses.
+- **Links or “Open sessions folder” do nothing (Linux/WSL)** — those buttons need a working OS opener. The app tries `xdg-open` (including `/usr/bin/xdg-open`, so a broken shim earlier on `PATH` can't shadow it), then `gio open`, then `sensible-browser`. If none of them can open the target it says so and copies the URL/path to your clipboard, rather than failing silently.
+- **Windows shell errors from the CLI** — install Git for Windows, or point `KIMI_SHELL_PATH` at your Git Bash if it's in a non-standard location.
+- **CLI lives inside WSL** — detected automatically. Session working directories must be Linux paths; the UI switches accordingly.
+- **Crash in a VM / RDP session with no GPU** — the app detects a machine with no usable GPU (GPU-less VM/container or a Windows Remote Desktop session) and relaunches itself with `--disable-gpu`; if you still hit it, start it with `--disable-gpu` yourself.
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome! `npm run smoke` is dependency-free and runs anywhere; `npm run e2e` needs `npm install` and a desktop session, because it drives a real Electron window:
+
+```bash
+npm run smoke && npm run e2e
+```
+
+## ⚖ Legal notice
+
+**This project is unofficial and independent.** It is **not associated in any way** with the official Kimi developers (**Moonshot AI**), nor with any subsidiary, affiliate, or partner thereof. Specifically:
+
+- There is **no affiliation, association, authorization, endorsement, sponsorship, or official connection** of any kind — this is a fan-made / community tool, nothing more.
+- "Kimi", "Kimi Code" and related names and marks are the **trademarks of their respective owners**. They are used here in a purely **descriptive / nominative** way (to state what this app drives), which implies no relationship and no claim of ownership.
+- The app **contains and redistributes no official code, assets, models, or credentials**. It downloads nothing from Moonshot AI — the user installs the official `kimi` CLI themselves, and this app merely spawns that locally installed binary in a terminal.
+- The app makes **no API calls on its own** and ships **no keys or tokens**. All interaction happens through the CLI you install, under your own account.
+- Users are responsible for complying with the **terms of service of the Kimi CLI / Moonshot AI** when using their own account.
+- If you are a representative of Moonshot AI and have a concern about this repository, please open an issue and it will be addressed promptly.
+
+## 📄 License
+
+[MIT](./LICENSE) — free to use, modify and ship.
