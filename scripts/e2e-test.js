@@ -117,7 +117,10 @@ function killStrayApps(settleMs = 0) {
 
 killStrayApps(1200);
 
-const app = spawn(ELECTRON, [...APP_ARGV, `--remote-debugging-port=${PORT}`, `--user-data-dir=${USER_DATA}`], {
+// Headless CI machines run as root without a setuid sandbox helper, so
+// Chromium refuses to start without this flag (locally unnecessary).
+const SANDBOX_FLAG = process.platform === 'linux' && process.env.CI ? ['--no-sandbox'] : [];
+const app = spawn(ELECTRON, [...APP_ARGV, ...SANDBOX_FLAG, `--remote-debugging-port=${PORT}`, `--user-data-dir=${USER_DATA}`], {
   cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false,
 });
 app.stdout.on('data', () => {});

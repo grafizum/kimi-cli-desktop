@@ -505,7 +505,7 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
   const slugRefs = [
     ...readSrc('install.sh').matchAll(/REPO="([^"]+)"/g),
     ...readSrc('install.ps1').matchAll(/\$Repo\s*=\s*"([^"]+)"/g),
-    ...readSrc('README.md').matchAll(/raw\.githubusercontent\.com\/([^/\s]+\/[^/\s]+)\/master\/install\.(?:sh|ps1)/g),
+    ...readSrc('README.md').matchAll(/raw\.githubusercontent\.com\/([^/\s]+\/[^/\s]+)\/(?:master|main)\/install\.(?:sh|ps1)/g),
   ].map((m) => m[1]);
   ok(slugRefs.length >= 3 && slugRefs.every((s) => s === repoSlug),
     `installers and README all point at ${repoSlug}`, slugRefs.join(', '));

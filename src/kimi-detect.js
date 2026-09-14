@@ -132,13 +132,18 @@ async function probe(bin, env) {
   return { path: bin, version: versionMatch[1], source: 'explicit', testDouble: isTestDouble(bin, combined) };
 }
 
+// `where`/`which` may list several hits (Windows: the repo's extension-less
+// POSIX fixture shim "kimi" sorts before the working "kimi.cmd"; users can
+// have a stale shim shadowing a fresh install). One broken hit must not end
+// the PATH search — return every hit in PATH order so detect() can probe
+// down the list until one actually answers `kimi --version`.
 function findOnPath(env) {
   return new Promise((resolve) => {
     const cmd = isWindows() ? 'where' : 'which';
-    execFile(cmd, ['kimi'], { env, windowsHide: true, cwd: safeCwd() }, (err, stdout) => {
-      if (err || !stdout) return resolve(null);
-      const first = stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
-      resolve(first || null);
+    execFile(cmd, ['-a', 'kimi'], { env, windowsHide: true, cwd: safeCwd() }, (err, stdout) => {
+      if ((err || !stdout) && !isWindows()) return resolve(null);
+      const hits = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      resolve(hits.length ? hits : null);
     });
   });
 }
@@ -335,9 +340,10 @@ async function detect(opts = {}) {
     if (hit) return accept(hit);
   }
 
-  // 2. PATH — one `where`/`which` call, the common case (fast path).
-  const onPath = await findOnPath(env);
-  if (onPath) {
+  // 2. PATH — one `where`/`which` call, the common case (fast path). Every
+  // hit is probed in PATH order: an early hit that exists but cannot answer
+  // `--version` (broken shim, wrong-OS script) must not mask a later one.
+  for (const onPath of (await findOnPath(env)) || []) {
     const hit = await probeCandidate(onPath, env, 'auto', checked);
     if (hit) return accept(hit);
   }
