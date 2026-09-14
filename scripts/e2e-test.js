@@ -123,8 +123,14 @@ const SANDBOX_FLAG = process.platform === 'linux' && process.env.CI ? ['--no-san
 const app = spawn(ELECTRON, [...APP_ARGV, ...SANDBOX_FLAG, `--remote-debugging-port=${PORT}`, `--user-data-dir=${USER_DATA}`], {
   cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false,
 });
+let appStderrTail = '';
 app.stdout.on('data', () => {});
-app.stderr.on('data', () => {});
+app.stderr.on('data', (d) => {
+  // Kept (last lines only) so a boot failure is diagnosable from the log:
+  // the suite otherwise discards the app's stderr, and a Chromium that
+  // refuses to start would fail as a bare "timeout waiting for app target".
+  appStderrTail = (appStderrTail + d.toString()).split(/\r?\n/).slice(-15).join('\n');
+});
 
 // A suite killed mid-run (Ctrl+C, crash, CI timeout) must still take its app
 // window down — a survivor looks exactly like the real app and once left a
@@ -514,7 +520,14 @@ async function main() {
 }
 
 main()
-  .catch((err) => { failures += 1; console.error('\nE2E ERROR:', err.message); })
+  .catch((err) => {
+    failures += 1;
+    console.error('\nE2E ERROR:', err.message);
+    if (appStderrTail.trim()) console.error('\n--- last Electron stderr ---\n' + appStderrTail + '\n----------------------------');
+    // Surfaces as a red annotation on the GitHub Actions run summary —
+    // readable without admin log access.
+    console.error(`::error::E2E failed: ${err.message}${appStderrTail.trim() ? ` :: ${appStderrTail.trim().split('\n').slice(-3).join(' | ')}` : ''}`);
+  })
   .finally(() => {
     // On a GPU-less host (VM / container / RDP) the app relaunches itself with
     // safe flags and then exits, so the process above is already gone and the

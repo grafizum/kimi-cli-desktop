@@ -43,5 +43,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # xvfb is not preinstalled on ubuntu-latest; electron needs a display.
+      - name: Install xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -y && sudo apt-get install -y xvfb
       - run: npm ci
       - run: ${{ matrix.run }}
