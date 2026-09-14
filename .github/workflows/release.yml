@@ -56,3 +56,29 @@ jobs:
             dist/*.exe
             dist/*.AppImage
             dist/*.dmg
+
+  # Collect every OS build and attach the installers to the tag's release.
+  # Must stay a separate job: without it the run goes green with no release,
+  # and install.ps1 / install.sh resolve nothing from releases/latest.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Kimi Code Desktop ${{ github.ref_name }}
+          generate_release_notes: true
+          # Never a draft or GitHub "pre-release": releases/latest — the URL
+          # the README links to and the API both installers resolve — ignores
+          # both, so a draft or prerelease would leave every install command
+          # broken.
+          draft: false
+          prerelease: false
+          files: dist/*
