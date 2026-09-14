@@ -2,7 +2,7 @@
 #
 # Kimi Code Desktop — one-command installer (Linux / macOS)
 #
-#   curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.sh | bash
 #
 # Downloads the latest release from GitHub and installs it:
 #   • Linux  → ~/.local/bin/Kimi-Code-Desktop-<version>-<arch>.AppImage
@@ -17,7 +17,7 @@ set -euo pipefail
 
 REPO="grafizum/kimi-cli-desktop"
 API="https://api.github.com/repos/${REPO}/releases/latest"
-RAW="https://raw.githubusercontent.com/${REPO}/master"
+RAW="https://raw.githubusercontent.com/${REPO}/main"
 
 # ---------------------------------------------------------------------------
 # Helpers

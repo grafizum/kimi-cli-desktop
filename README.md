@@ -49,13 +49,13 @@ It does **not** reimplement the agent through an API — it runs the *real* `kim
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.ps1 | iex
 ```
 
 **Linux** / **macOS**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.sh | bash
 ```
 
 The script picks the right build for your OS and architecture from the [latest release](https://github.com/grafizum/kimi-cli-desktop/releases/latest) and installs it:

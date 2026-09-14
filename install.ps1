@@ -1,6 +1,6 @@
 ﻿# Kimi Code Desktop - one-command installer (Windows)
 #
-#   irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/master/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.ps1 | iex
 #
 # Downloads the latest release (portable single-file exe) from GitHub and
 # installs it into %LOCALAPPDATA%\Programs\Kimi Code Desktop, then creates

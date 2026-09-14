@@ -1,0 +1,58 @@
+# Release pipeline — the README's "Releasing" section in action:
+#   git tag v1.0.0 && git push origin v1.0.0
+# builds the installers on all three OSes and attaches them to the release,
+# which is exactly what install.ps1 / install.sh then download for users.
+#
+# Artifact names come from package.json "build" (electron-builder):
+#   Kimi-Code-Desktop-<version>-x64-portable.exe   (Windows)
+#   Kimi-Code-Desktop-Setup-<version>-x64.exe      (Windows NSIS)
+#   Kimi-Code-Desktop-<version>-<arch>.AppImage    (Linux x64 + arm64)
+#   Kimi-Code-Desktop-<version>-<arch>.dmg         (macOS x64 + arm64)
+# The installers match on "portable.exe", ".AppImage" / ".dmg" + arch — keep
+# the artifactName patterns in package.json stable or update the scripts.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release, upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
+          - os: macos-latest
+            script: dist:mac
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Publish here would need GH_TOKEN and create three racing releases;
+      # the release job below uploads everything in one step instead.
+      - run: npm run ${{ matrix.script }} -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.dmg
