@@ -104,16 +104,6 @@
           <div class="sidebar-header">
             <span class="sidebar-title">Previous sessions</span>
             <span class="sidebar-header-actions">
-              <button id="btn-group-sessions" class="icon-btn" title="Grouped by project folder — click to group by date" aria-label="Grouped by project folder — click to group by date" aria-pressed="true">
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <path d="M1.8 4.2c0-.9.7-1.6 1.6-1.6h3l1.6 1.7h5.2c.9 0 1.6.7 1.6 1.6v6c0 .9-.7 1.6-1.6 1.6H3.4c-.9 0-1.6-.7-1.6-1.6v-7.7z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
-                </svg>
-              </button>
-              <button id="btn-open-sessions-folder" class="icon-btn" title="Open the sessions folder — copy or point to a session history here" aria-label="Open sessions folder">
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <path d="M1.8 4.2c0-.9.7-1.6 1.6-1.6h3l1.6 1.7h5.2c.9 0 1.6.7 1.6 1.6v6c0 .9-.7 1.6-1.6 1.6H3.4c-.9 0-1.6-.7-1.6-1.6v-7.7z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
-                </svg>
-              </button>
               <button id="btn-refresh-sessions" class="icon-btn" title="Refresh session history" aria-label="Refresh session history">
                 <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M13.7 10a6 6 0 1 1-1.4-6.2L15.3 6.7"/><path d="M15.3 2.7v4h-4"/></svg>
               </button>
@@ -283,7 +273,7 @@
               <button id="st-kimi-detect" class="btn ghost">Re-detect</button>
             </span>
             <span id="st-kimi-version" class="field-hint"></span>
-            <span class="field-hint">Usually installed to one of:<br /><span id="st-kimi-candidates"></span></span>
+            <span class="field-hint">Usually installed to:<br /><span id="st-kimi-candidates"></span></span>
           </label>
           <label class="field">
             <span class="field-label">Sessions folder (KIMI_CODE_HOME)</span>
@@ -354,7 +344,7 @@
               <option value="panel">Framed panel — matches the app chrome</option>
               <option value="classic">Classic — terminal fills the window</option>
             </select>
-            <span class="field-hint">Saved with “Save settings”. Classic restores the plain edge-to-edge terminal.</span>
+            <span class="field-hint">Saved with “Apply changes”. Classic restores the plain edge-to-edge terminal.</span>
           </label>
         </fieldset>
       </div>
@@ -362,7 +352,7 @@
         <span class="modal-actions-note">config.toml has its own Save button.</span>
         <span class="spacer"></span>
         <button id="st-cancel" class="btn ghost">Close</button>
-        <button id="st-save" class="btn primary">Save settings</button>
+        <button id="st-save" class="btn primary">Apply changes</button>
       </div>
     </div>
   </div>

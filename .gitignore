@@ -21,3 +21,14 @@ TODO.md
 # OS / environment files
 .env
 .env.*
+
+# Agent workspace state (local tooling, not part of the app)
+.freebuff/
+
+# Runtime artifacts the fake kimi fixture regenerates on every test run
+# (device ids, cached client config, update probes, workspace registry)
+test-fixtures/kimi-home/cache/
+test-fixtures/kimi-home/updates/
+test-fixtures/kimi-home/device_id
+test-fixtures/kimi-home/tui.toml
+test-fixtures/kimi-home/workspaces.json

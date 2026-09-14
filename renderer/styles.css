@@ -571,7 +571,10 @@ body.resizing #sidebar { transition: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl; /* keep the meaningful tail of long paths visible */
+  /* No direction: rtl here — it keeps the tail of long paths visible, but the
+     bidi algorithm shuffles the neutral % of Windows variables
+     (%USERPROFILE%… rendered as USERPROFILE%…%). Callers that need tail
+     truncation do it in JS instead. */
   text-align: left;
   font-size: 11px;
   color: var(--text-dim);
@@ -600,8 +603,7 @@ body.resizing #sidebar { transition: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
-  text-align: left;
+  /* No direction: rtl — see .se-path: it visually mangles %USERPROFILE%. */
   vertical-align: bottom;
   font-size: 11px;
   color: var(--text-faint);

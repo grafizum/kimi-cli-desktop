@@ -33,6 +33,12 @@ const FAKE_BIN = path.join(ROOT, 'test-fixtures', 'bin');
 const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), 'kcd-ws-'));
 const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kimi-home-'));
 fs.cpSync(path.join(ROOT, 'test-fixtures', 'kimi-home'), FAKE_HOME, { recursive: true });
+// A second, empty home for the settings → session-folder round trip: saving a
+// new KIMI_CODE_HOME reloads the window, and this one must show up afterwards.
+const FAKE_HOME2 = fs.mkdtempSync(path.join(os.tmpdir(), 'kimi-home2-'));
+fs.mkdirSync(path.join(FAKE_HOME2, 'sessions'), { recursive: true });
+fs.writeFileSync(path.join(FAKE_HOME2, 'session_index.jsonl'), '');
+fs.writeFileSync(path.join(FAKE_HOME2, 'config.toml'), '# empty test home\n');
 
 function walkFiles(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory()
@@ -129,6 +135,7 @@ function reap() {
   killStrayApps();
   try { fs.rmSync(USER_DATA, { recursive: true, force: true }); } catch { /* best effort */ }
   try { fs.rmSync(FAKE_HOME, { recursive: true, force: true }); } catch { /* best effort */ }
+  try { fs.rmSync(FAKE_HOME2, { recursive: true, force: true }); } catch { /* best effort */ }
   try { fs.rmSync(WORKSPACE, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 process.on('SIGINT', () => { reap(); process.exit(130); });
@@ -268,16 +275,8 @@ async function main() {
     'the group unfolds again');
   ok(true, 'unfolding the group restores its sessions');
 
-  // The header toggle switches to date grouping and back.
-  await evalJS(`document.querySelector('#btn-group-sessions').click()`);
-  const dateGroups = await waitFor(async () => {
-    const g = await labels();
-    return g.includes('Today') || g.includes('Older') ? g : null;
-  }, 'date grouping after the toggle');
-  ok(true, `the group toggle switches to date grouping (${dateGroups.join(',')})`);
-  await evalJS(`document.querySelector('#btn-group-sessions').click()`);
-  await waitFor(async () => (await labels()).includes('session-alpha'), 'project grouping after toggling back');
-  ok(true, 'toggling back restores project grouping');
+  // (The header group toggle was removed — date grouping stays covered by the
+  // smoke suite's groupSessions unit checks.)
 
   // 3. New interactive session → PTY spawns → TUI output streams
   await evalJS(`document.querySelector('#btn-new-session').click()`);
@@ -482,6 +481,31 @@ async function main() {
   await evalJS(`__kcd.closeTab(__kcd.state.tabs.get(__kcd.state.activeTabId))`);
   const tabsAfter = await evalJS(`document.querySelectorAll('.tab').length`);
   ok(tabsAfter === tabsBefore - 1, 'tab closes cleanly');
+
+  // 11. Changing the session folder (KIMI_CODE_HOME) and pressing Apply must
+  // reload the window: the app re-boots against the new home with no manual
+  // restart. Driven last — the reload kills live sessions and rebuilds the UI.
+  console.log('\n[e2e] settings: session folder change triggers reload');
+  await evalJS(`document.querySelector('#btn-settings').click()`);
+  await evalJS(`document.querySelector('.settings-tab[data-tab="cli"]').click()`);
+  ok((await evalJS(`document.querySelector('#st-save').textContent.trim()`)) === 'Apply changes',
+    'the settings action button is labelled "Apply changes"');
+  await evalJS(`document.querySelector('#st-kimi-home').value = ${JSON.stringify(FAKE_HOME2)}`);
+  // A marker in the current JS context proves the reload really happened:
+  // after webContents.reload() the context is rebuilt and the marker is gone.
+  await evalJS(`window.__KCD_E2E_GEN = 'before-reload'`);
+  await evalJS(`document.querySelector('#st-save').click()`);
+  await waitFor(async () =>
+    (await evalJS(`window.__KCD_E2E_GEN === undefined && document.readyState === 'complete'`)),
+    'the app reloads into a fresh context after Apply', 30000);
+  await waitFor(async () =>
+    (await evalJS(`document.querySelector('#status-home').textContent`)).includes(path.basename(FAKE_HOME2)),
+    'status bar shows the new session folder', 60000);
+  ok(true, 'Apply on a changed session folder reloads the app into the new home');
+  ok((await evalJS(`document.querySelector('#modal-settings').classList.contains('hidden')`)),
+    'the settings modal does not reopen after the reload');
+  ok((await evalJS(`document.querySelectorAll('.session-item').length`)) === 0,
+    'the empty second home lists no sessions (the reload really switched folders)');
 
   console.log(failures === 0 ? '\nE2E ALL PASSED ✔' : `\nE2E ${failures} FAILED ✘`);
 }

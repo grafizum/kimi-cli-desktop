@@ -112,9 +112,53 @@ ok(!list.find((s) => s.id === 'session-nostate'), 'stateless session excluded');
 const sessionsLib = require('../src/sessions');
 ok(sessionsLib.displayTitle(current) === 'Implement auth', 'displayTitle uses title');
 ok(sessionsLib.displayTitle({ lastPrompt: '  some   prompt  ' }) === 'some prompt', 'displayTitle falls back to collapsed lastPrompt');
-ok(sessionsLib.displayTitle({}) === 'Untitled session', 'displayTitle fallback');
-ok(sessionsLib.projectName('C:\\Users\\dev\\myproject') === 'myproject', 'projectName (win path)');
-ok(sessionsLib.projectName('/work/legacy-project') === 'legacy-project', 'projectName (posix path)');
+ok(sessionsLib.displayTitle({}) === 'Untitled session', 'displayTitle fallback');  ok(sessionsLib.projectName('C:\\Users\\dev\\myproject') === 'myproject', 'projectName (win path)');
+  ok(sessionsLib.projectName('/work/legacy-project') === 'legacy-project', 'projectName (posix path)');
+
+  // The Settings picker lets the user point the app at ANY folder — including
+  // the sessions store itself (whatever it is called) or a whole data home.
+  // Each shape below must surface the same sessions as the default layout.
+  console.log('\n[sessions] user-picked folder shapes');
+
+  const picked = path.join(home, 'session'); // deliberately not named "sessions"
+  for (const wd of fs.readdirSync(sessionsRoot)) {
+    fs.cpSync(path.join(sessionsRoot, wd), path.join(picked, wd), { recursive: true });
+  }
+  const fromPicked = sessions.listSessions({ home: picked });
+  ok(fromPicked.length === 3, 'a folder picked by the user (any name) IS the session store',
+    `got ${fromPicked.length}`);
+
+  const flat = path.join(home, 'flat-store');
+  fs.cpSync(path.join(sessionsRoot, 'wd_myproject_aaaaaaaaaaaa', 'session-current'),
+    path.join(flat, 'session-current'), { recursive: true });
+  const fromFlat = sessions.listSessions({ home: flat });
+  ok(fromFlat.length === 1 && fromFlat[0].id === 'session-current',
+    'a flat store of session folders is recognized too', `got ${fromFlat.length}`);
+
+  const withIndex = path.join(home, 'indexed-store');
+  fs.cpSync(path.join(sessionsRoot, 'wd_legacy_bbbbbbbbbbbb', 'session-legacy'),
+    path.join(withIndex, 'session-legacy'), { recursive: true });
+  fs.writeFileSync(path.join(withIndex, 'session_index.jsonl'),
+    JSON.stringify({ sessionId: 'session-legacy', workDir: '/work/from-index' }));
+  const fromIndexed = sessions.listSessions({ home: withIndex });
+  ok(fromIndexed.length === 1 && fromIndexed[0].cwd === '/work/from-index',
+    'an index file inside the picked folder is honored', JSON.stringify(fromIndexed[0] && fromIndexed[0].cwd));
+
+  const fromHome = sessions.listSessions({ home });
+  ok(fromHome.length === 3, 'the default <home>/sessions layout is unchanged',
+    `got ${fromHome.length}`);
+
+  const nestedHome = path.join(tmpRoot('nested'), 'somewhere');
+  const nestedStore = path.join(nestedHome, '.kimi-code', 'sessions');
+  fs.cpSync(sessionsRoot, nestedStore, { recursive: true });
+  const fromNested = sessions.listSessions({ home: nestedHome });
+  ok(fromNested.length === 3, 'a folder containing the data home finds its <entry>/sessions',
+    `got ${fromNested.length}`);
+
+  const empty = tmpRoot('empty-pick');
+  fs.mkdirSync(path.join(empty, 'not-sessions'), { recursive: true });
+  ok(sessions.listSessions({ home: empty }).length === 0,
+    'a folder with no session data still reports zero sessions');
 
 // ---------------------------------------------------------------------------
 // 2. Binary detection
@@ -400,6 +444,16 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
 
   ok(/ipcMain\.handle\('session:export'/.test(mainSrc) && /exportSession:/.test(preloadSrc),
     'session export is wired main ⇄ preload');
+  // Changing the session folder must reload the window: settings:set persists,
+  // app:reload-window kills live PTYs (they still carry the old env) and
+  // reboots the renderer, and the settings save path triggers it on a changed
+  // KIMI_CODE_HOME so the switch is visible without a manual restart.
+  ok(/ipcMain\.handle\('app:reload-window'/.test(mainSrc) && /reloadWindow:/.test(preloadSrc)
+    && /api\.reloadWindow\(\)/.test(appSrc)
+    && /patch\.kimiCodeHome !== oldKimiHome/.test(appSrc),
+    'a changed session folder kills live sessions and reloads the window (Apply)');
+  ok(/id="st-save"[^>]*>Apply changes</.test(htmlSrc),
+    'the settings save button is labelled "Apply changes"');
   ok(/Array\.isArray\(opts\.argv\)/.test(mainSrc) && /argv: Array\.isArray\(argv\)/.test(appSrc),
     'literal kimi argv is forwarded (fork)');
   ok(/\['fork', s\.id, '-y'\]/.test(appSrc), 'fork runs the CLI: kimi fork <id> -y');
@@ -486,7 +540,8 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     ok(/genericPath\(state\.kimi\.path\)/.test(appSrc) &&
       /genericPath\(state\.kimiHomeDisplay/.test(appSrc),
       'status bar and kimi status show display-safe paths');
-    ok(/genericPath\(c\)/.test(appSrc), 'CLI install candidates are display-safe');
+    ok(/CANDIDATE_HINTS\s*=\s*\{/.test(appSrc) && !/cands\.map\(/.test(appSrc),
+      'CLI install hints are fixed display-safe constants (no raw candidate dump)');
     ok(!/\$\{\s*res\.path\s*\}/.test(appSrc) && !/=\s*res\.path\b/.test(appSrc),
       'no read-only path is rendered raw (config path, export confirmation)');
   }
@@ -542,8 +597,8 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     'bootstrap answers immediately while detection finishes in the background');
   ok(/ipcMain\.handle\('shell:open-path'/.test(mainSrc) && /openPath:/.test(preloadSrc),
     'opening a local folder is wired main ⇄ preload');
-  ok(/id="btn-open-sessions-folder"/.test(htmlSrc) && /\$\('#btn-open-sessions-folder'\)/.test(appSrc),
-    'the sessions-folder button is present and wired');
+  ok(!/id="btn-open-sessions-folder"/.test(htmlSrc) && !/id="btn-group-sessions"/.test(htmlSrc),
+    'the sidebar header carries no grouping or open-folder buttons (refresh only)');
   ok(/const allowed = new Set\(\[/.test(mainSrc),
     'app:get-path only serves an allow-listed set of names');
   ok(!/<\/br>/.test(htmlSrc + appSrc), 'no invalid </br> tags in the renderer');
@@ -588,8 +643,8 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     'shell:open-path waits for the result instead of assuming success');
   ok(/openExternalSafe/.test(appSrc),
     'the renderer reports a link that could not be opened');
-  ok(/await api\.openPath\(home\)/.test(appSrc),
-    'the sessions-folder button checks the opener result');
+  // (The old sessions-folder button and its opener check are gone — the
+  // sidebar header now carries only the refresh control.)
   ok(/'\/usr\/bin\/xdg-open'/.test(mainSrc),
     'the absolute xdg-open is tried before PATH (a broken shim can shadow it)');
   ok(/reported an error/.test(mainSrc),

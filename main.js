@@ -637,6 +637,22 @@ function registerIpc() {
     return settings;
   });
 
+  // Pointing the session folder elsewhere switches everything kimi-related
+  // (session history, config.toml, credentials, the env each PTY inherits), so
+  // a plain re-scan is not enough. Live sessions keep running under the old
+  // folder and would quietly keep writing into it — kill them, then reload the
+  // window so the whole app re-boots against the new folder and the change is
+  // immediately visible (and verifiable) without a manual restart.
+  ipcMain.handle('app:reload-window', () => {
+    for (const s of sessionsByTab.values()) s.kill();
+    sessionsByTab.clear();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
   ipcMain.handle('sessions:list', async () => {
     const home = scanKimiCodeHome() || sessions.kimiHome(currentEnv());
     // The WSL 9P mount (\\wsl.localhost\...) can lag the VM start — wait for

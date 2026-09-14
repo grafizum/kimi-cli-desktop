@@ -95,20 +95,133 @@ function readSessionsRoot(sessionsRoot) {
   return [];
 }
 
-// Scan all sessions under $KIMI_CODE_HOME. Returns an array sorted by
-// updatedAt (most recent first).
-function listSessions({ home } = {}) {
-  const root = home || kimiHome();
-  const sessionsRoot = path.join(root, 'sessions');
-  const indexWorkdirs = readIndexWorkdirs(path.join(root, 'session_index.jsonl'));
+// A directory "is" a session when it carries the CLI's state file (v2 keeps
+// it at the top, older layouts under session-meta/).
+function dirHasState(dir) {
+  return fs.existsSync(path.join(dir, 'state.json')) ||
+    fs.existsSync(path.join(dir, 'session-meta', 'state.json'));
+}
 
-  const entries = readSessionsRoot(sessionsRoot);
-  if (!entries.length) return [];
+// True when `dir` holds session data at one or two levels of nesting (a
+// sessions root, a single work-dir key, or a flat set of session folders).
+function looksLikeSessionsRoot(dir) {
+  for (const entry of readSessionsRoot(dir)) {
+    if (!entry.isDirectory()) continue;
+    const entryDir = path.join(dir, entry.name);
+    if (dirHasState(entryDir)) return true;
+    let children;
+    try {
+      children = fs.readdirSync(entryDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    if (children.some((c) => c.isDirectory() && dirHasState(path.join(entryDir, c.name)))) {
+      return true;
+    }
+  }
+  return false;
+}
 
+// Resolve where session data actually lives for a chosen home folder.
+// Normally that is <home>/sessions — but the user picks this folder in
+// Settings, and they may well select the sessions folder itself (whatever it
+// is called, e.g. "session"). Accept that shape instead of scanning a
+// nonexistent <picked>/sessions and reporting zero history.
+function sessionRoots(root) {
+  const standard = path.join(root, 'sessions');
+  if (fs.existsSync(standard)) {
+    return [{ dir: standard, indexes: [path.join(root, 'session_index.jsonl')] }];
+  }
+  if (looksLikeSessionsRoot(root)) {
+    // The picked folder IS the session store; its index (if any) sits either
+    // inside it or beside it, in what would normally be the home directory.
+    return [{
+      dir: root,
+      indexes: [
+        path.join(root, 'session_index.jsonl'),
+        path.join(path.dirname(root), 'session_index.jsonl'),
+      ],
+    }];
+  }
+  // The picked folder is (or contains) a data home whose sessions live one
+  // level down — e.g. the user selected their home directory.
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const nested = path.join(root, entry.name, 'sessions');
+      if (fs.existsSync(nested) && looksLikeSessionsRoot(nested)) {
+        return [{ dir: nested, indexes: [path.join(root, entry.name, 'session_index.jsonl')] }];
+      }
+    }
+  } catch { /* unreadable root → no sessions */ }
+  return [];
+}
+
+// Walk one sessions root. Handles both layouts of the CLI store: session
+// folders grouped under a work-dir key, or session folders directly inside.
+function collectSessions(sessionsRoot, indexWorkdirs) {
   const sessions = [];
-  for (const workDirEntry of entries) {
+  const seenDirs = new Set();
+
+  const addSession = (sessionDir, fallbackId) => {
+    if (seenDirs.has(sessionDir)) return;
+    seenDirs.add(sessionDir);
+    const statePath = fs.existsSync(path.join(sessionDir, 'state.json'))
+      ? path.join(sessionDir, 'state.json')
+      : path.join(sessionDir, 'session-meta', 'state.json');
+    // Only directory-based sessions with a state file are resumable.
+    const state = readStateFile(statePath);
+    if (!state) return;
+
+    if (state.archived === true) return;
+    const sessionId =
+      (typeof state.id === 'string' && state.id.trim() ? state.id.trim() : fallbackId);
+    if (!sessionId || sessionId.startsWith('.')) return;
+
+    const cwd =
+      (state &&
+        [state.cwd, state.workDir, state.custom && state.custom.cwd]
+          .map((v) => (typeof v === 'string' ? v.trim() : ''))
+          .find(Boolean)) ||
+      indexWorkdirs.get(sessionId) ||
+      '';
+
+    const updatedAt =
+      (state && parseTimestamp(state.updatedAt)) ||
+      (state && parseTimestamp(state.createdAt)) ||
+      safeMtimeMs(sessionDir);
+    const createdAt = (state && parseTimestamp(state.createdAt)) || updatedAt;
+
+    const isChild =
+      state && state.custom && state.custom.child_session_kind === 'child';
+
+    sessions.push({
+      id: sessionId,
+      dir: sessionDir,
+      title: state && typeof state.title === 'string' ? state.title.trim() : '',
+      lastPrompt:
+        state && typeof state.lastPrompt === 'string'
+          ? collapseWhitespace(state.lastPrompt)
+          : '',
+      cwd,
+      createdAt,
+      updatedAt,
+      gitBranch:
+        state && (typeof state.gitBranch === 'string' ? state.gitBranch : '') || '',
+      worktreeLabel:
+        state && typeof state.worktreeLabel === 'string' ? state.worktreeLabel : '',
+      interactive: !isChild,
+    });
+  };
+
+  for (const workDirEntry of readSessionsRoot(sessionsRoot)) {
     if (!workDirEntry.isDirectory()) continue;
     const workDirDir = path.join(sessionsRoot, workDirEntry.name);
+    // Flat layout: session folders sit directly inside the root.
+    if (dirHasState(workDirDir)) {
+      addSession(workDirDir, workDirEntry.name);
+      continue;
+    }
     let sessionEntries;
     try {
       sessionEntries = fs.readdirSync(workDirDir, { withFileTypes: true });
@@ -118,56 +231,28 @@ function listSessions({ home } = {}) {
     for (const sessionEntry of sessionEntries) {
       if (!sessionEntry.isDirectory()) continue;
       const sessionDir = path.join(workDirDir, sessionEntry.name);
-      const statePath = fs.existsSync(path.join(sessionDir, 'state.json'))
-        ? path.join(sessionDir, 'state.json')
-        : path.join(sessionDir, 'session-meta', 'state.json');
-      // Only directory-based sessions with a state file are resumable.
-      if (!fs.existsSync(statePath)) continue;
-      const state = readStateFile(statePath);
-      if (!state) continue;
-
-      if (state.archived === true) continue;
-      const sessionId =
-        (typeof state.id === 'string' && state.id.trim() ? state.id.trim() : sessionEntry.name);
-      if (!sessionId || sessionId.startsWith('.')) continue;
-
-      const cwd =
-        (state &&
-          [state.cwd, state.workDir, state.custom && state.custom.cwd]
-            .map((v) => (typeof v === 'string' ? v.trim() : ''))
-            .find(Boolean)) ||
-        indexWorkdirs.get(sessionId) ||
-        '';
-
-      const updatedAt =
-        (state && parseTimestamp(state.updatedAt)) ||
-        (state && parseTimestamp(state.createdAt)) ||
-        safeMtimeMs(sessionDir);
-      const createdAt = (state && parseTimestamp(state.createdAt)) || updatedAt;
-
-      const isChild =
-        state && state.custom && state.custom.child_session_kind === 'child';
-
-      sessions.push({
-        id: sessionId,
-        dir: sessionDir,
-        title: state && typeof state.title === 'string' ? state.title.trim() : '',
-        lastPrompt:
-          state && typeof state.lastPrompt === 'string'
-            ? collapseWhitespace(state.lastPrompt)
-            : '',
-        cwd,
-        createdAt,
-        updatedAt,
-        gitBranch:
-          state && (typeof state.gitBranch === 'string' ? state.gitBranch : '') || '',
-        worktreeLabel:
-          state && typeof state.worktreeLabel === 'string' ? state.worktreeLabel : '',
-        interactive: !isChild,
-      });
+      if (dirHasState(sessionDir)) addSession(sessionDir, sessionEntry.name);
     }
   }
+  return sessions;
+}
 
+// Scan the session history for `home` (the folder chosen in Settings, or the
+// CLI's default). Returns an array sorted by updatedAt (most recent first).
+function listSessions({ home } = {}) {
+  const root = home || kimiHome();
+  const sessions = [];
+  for (const { dir, indexes } of sessionRoots(root)) {
+    const indexWorkdirs = new Map();
+    for (const index of indexes) {
+      // First source wins: an index inside the picked folder describes its
+      // sessions better than one that merely sits beside the store.
+      for (const [id, workDir] of readIndexWorkdirs(index)) {
+        if (!indexWorkdirs.has(id)) indexWorkdirs.set(id, workDir);
+      }
+    }
+    sessions.push(...collectSessions(dir, indexWorkdirs));
+  }
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);
   return sessions;
 }

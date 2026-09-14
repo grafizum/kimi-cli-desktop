@@ -268,20 +268,7 @@ function groupSessions(list, mode, collapsedKeys) {
   return groups;
 }
 
-// The sidebar header toggle shows the grouping currently in force (folder =
-// project, calendar = date) so the button reads as a state, not as an action.
-function applyGroupToggle() {
-  const btn = $('#btn-group-sessions');
-  if (!btn) return;
-  const mode = state.settings.sessionGroupBy === 'date' ? 'date' : 'project';
-  btn.innerHTML = ico(mode === 'project' ? 'folder' : 'calendar');
-  const label = mode === 'project'
-    ? 'Grouped by project folder — click to group by date'
-    : 'Grouped by date — click to group by project folder';
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.setAttribute('aria-pressed', mode === 'project' ? 'true' : 'false');
-}
+
 
 // The OS account name must never show up in the UI just because that is where a
 // path happens to live. Replace the user's home directory with the conventional
@@ -592,15 +579,13 @@ function renderSessionList() {
       listEl.innerHTML = `
         <div class="session-empty">
           <div class="se-title">No sessions here yet</div>
-          <div class="se-text">Sessions are read from the folder<br/>below. Copy a session history into it<br/>and hit refresh.</div>
+          <div class="se-text">Sessions are read from the folder<br/>below. Copy a session history into it<br/>and press the refresh arrow above.</div>
           <code class="se-path" title="${esc(shown)}">${esc(short)}</code>
           <div class="se-actions">
             <button id="se-change-home" class="btn ghost" title="Choose the folder Kimi reads sessions from — opens Settings">Change Folder</button>
-            <button id="se-refresh" class="btn ghost">Refresh</button>
           </div>
         </div>`;
       $('#se-change-home')?.addEventListener('click', () => openSettingsModal('cli'));
-      $('#se-refresh')?.addEventListener('click', () => refreshSessions());
     }
     return;
   }
@@ -1662,11 +1647,25 @@ async function openSettingsModal(tab) {
   $('#st-kimi-path').value = s.kimiPath || '';
   $('#st-kimi-home').value = s.kimiCodeHome || '';
   $('#st-shell-path').value = s.shellPath || '';
-  // Where the CLI usually lives, so the user can find/verify it by hand.
-  const cands = state.kimiCliCandidates || [];
-  $('#st-kimi-candidates').innerHTML = cands.length
-    ? cands.map((c) => `<span class="candidate-path">${esc(genericPath(c))}</span>`).join('<br />')
-    : (state.platform === 'win32' ? '%USERPROFILE%\\.kimi-code\\bin\\kimi.exe' : '~/.kimi-code/bin/kimi');
+  // Where the CLI usually lives, so the user can find/verify it by hand: the
+  // detected path above already covers this machine, so list this platform's
+  // usual spot only when nothing was detected, plus the other systems' spots.
+  const CANDIDATE_HINTS = {
+    win32: '%USERPROFILE%\\AppData\\Local\\Programs\\kimi\\kimi.exe',
+    darwin: '/opt/homebrew/bin/kimi',
+    linux: '~/.local/bin/kimi',
+  };
+  const herePlatform = state.platform === 'darwin' ? 'darwin' : (state.platform === 'win32' ? 'win32' : 'linux');
+  const platformLabel = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+  const hintRows = [];
+  if (!(state.kimi && state.kimi.found)) hintRows.push(`${platformLabel[herePlatform]}: ${CANDIDATE_HINTS[herePlatform]}`);
+  for (const p of ['win32', 'darwin', 'linux']) {
+    if (p === herePlatform) continue;
+    hintRows.push(`${platformLabel[p]}: ${CANDIDATE_HINTS[p]}`);
+  }
+  $('#st-kimi-candidates').innerHTML = hintRows
+    .map((t) => `<span class="candidate-path">${esc(t)}</span>`)
+    .join('<br />');
   $('#st-default-cwd').value = s.defaultCwd || '';
   $('#st-default-mode').value = s.defaultMode || 'default';
   $('#st-font-size').value = s.fontSize || 13;
@@ -1697,7 +1696,7 @@ async function openSettingsModal(tab) {
   setSettingsTab(tab === undefined ? (state.settingsTab || 'config') : tab);
 }
 
-function saveSettingsFromModal() {
+async function saveSettingsFromModal() {
   const oldKimiPath = state.settings.kimiPath || '';
   const oldKimiHome = state.settings.kimiCodeHome || '';
   const patch = {
@@ -1713,7 +1712,7 @@ function saveSettingsFromModal() {
     terminalStyle: $('#st-term-style').value === 'classic' ? 'classic' : 'panel',
   };
   state.settings = { ...state.settings, ...patch };
-  api.setSettings(patch);
+  const saved = api.setSettings(patch);
   closeModal('modal-settings');
   applyTheme();
   applyTerminalStyle();
@@ -1725,8 +1724,17 @@ function saveSettingsFromModal() {
     t.term.options.scrollback = patch.scrollback;
     try { t.fit.fit(); sendResize(t); } catch { /* noop */ }
   }
-  if (patch.kimiPath !== oldKimiPath || patch.kimiCodeHome !== oldKimiHome) {
-    // Re-detect / re-scan against the new path/home
+  if (patch.kimiCodeHome !== oldKimiHome) {
+    // The session folder changed: live sessions still run with the old
+    // KIMI_CODE_HOME env, so a full window reload re-boots the app against
+    // the new folder — the change is immediately visible (and verifiable)
+    // without a manual restart.
+    try { await saved; } catch { /* reload shows any persist error anyway */ }
+    await api.reloadWindow();
+    return;
+  }
+  if (patch.kimiPath !== oldKimiPath) {
+    // Re-detect / re-scan against the new CLI path
     reDetect();
     return;
   }
@@ -1893,32 +1901,6 @@ function wireEvents() {
 
   // Sidebar
   $('#btn-refresh-sessions').addEventListener('click', () => { refreshSessions(); toast('Session history refreshed', 'ok'); });
-
-  // Sidebar header toggle: project folders ⇄ date, remembered across launches.
-  $('#btn-group-sessions').addEventListener('click', () => {
-    const next = state.settings.sessionGroupBy === 'date' ? 'project' : 'date';
-    state.settings.sessionGroupBy = next;
-    api.setSettings({ sessionGroupBy: next });
-    applyGroupToggle();
-    renderSessionList();
-    toast(next === 'project' ? 'Sessions grouped by project folder' : 'Sessions grouped by date', 'ok');
-  });
-  applyGroupToggle();
-  // Always-visible route to the sessions folder on disk: drop a history in,
-  // change KIMI_CODE_HOME, or just see where sessions come from.
-  $('#btn-open-sessions-folder').addEventListener('click', async () => {
-    const home = state.kimiHome || state.settings.kimiCodeHome || state.sessionHomeDefault || '';
-    if (!home) {
-      toast('Sessions folder is not set yet — pick one in Settings.', 'error');
-      openSettingsModal('cli');
-      return;
-    }
-    const res = await api.openPath(home);
-    if (res && res.ok === false) {
-      api.copyText(home);
-      toast('Could not open the folder — no file manager available. Path copied to the clipboard.', 'error');
-    }
-  });
   $('#session-filter').addEventListener('input', (e) => {
     state.filter = e.target.value;
     renderSessionList();

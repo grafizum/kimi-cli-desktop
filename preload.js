@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('kimiDesktop', {
   setKimiPath: (p) => ipcRenderer.invoke('kimi:set-path', p),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  // Kill live sessions and reload the whole window (used after the session
+  // folder changes so the new home is picked up immediately).
+  reloadWindow: () => ipcRenderer.invoke('app:reload-window'),
 
   // session history
   listSessions: () => ipcRenderer.invoke('sessions:list'),
