@@ -126,6 +126,24 @@ function killStrayApps(settleMs = 0) {
   while (Date.now() < until) { /* wait */ }
 }
 
+// `npm ci` does not always leave the Electron binary behind (postinstall
+// scripts can be skipped or fail silently), and spawning a missing electron
+// dies as an unhandled 'error' event with no useful output. Recover, or fail
+// loudly with an annotation instead of a bare exit code 1.
+if (!PACKAGED && !fs.existsSync(ELECTRON)) {
+  console.log('[e2e] Electron binary missing — running node_modules/electron/install.js …');
+  try {
+    execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'electron', 'install.js')], { stdio: 'inherit' });
+  } catch (err) {
+    console.log(`::error::E2E could not install the Electron binary: ${err.message}`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(ELECTRON)) {
+    console.log(`::error::E2E Electron binary still missing after install: ${ELECTRON}`);
+    process.exit(1);
+  }
+}
+
 killStrayApps(1200);
 
 // Headless CI machines run as root without a setuid sandbox helper, so
@@ -160,6 +178,28 @@ function reap() {
 }
 process.on('SIGINT', () => { reap(); process.exit(130); });
 process.on('SIGTERM', () => { reap(); process.exit(143); });
+
+// Last-resort diagnostics: a crash outside main()'s catch (module-load error,
+// spawn failure) would otherwise exit with output only in the step log, which
+// needs admin access on this repo. The 'error' listener keeps a missing
+// Electron binary from dying as a bare unhandled event.
+app.on('error', (err) => {
+  console.log(`::error::E2E could not launch Electron at ${ELECTRON}: ${err.message}`);
+  reap();
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  const brief = String(err.stack || err.message || err).split(/\r?\n/).slice(0, 3).join(' | ');
+  console.log(`::error::E2E crashed: ${brief.slice(0, 400)}`);
+  reap();
+  process.exit(1);
+});
+process.on('unhandledRejection', (err) => {
+  const brief = String((err && err.stack) || (err && err.message) || err).split(/\r?\n/).slice(0, 3).join(' | ');
+  console.log(`::error::E2E unhandled rejection: ${brief.slice(0, 400)}`);
+  reap();
+  process.exit(1);
+});
 
 // ---------------------------------------------------------------------------
 // Minimal CDP client (Node built-in WebSocket)
