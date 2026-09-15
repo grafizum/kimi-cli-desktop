@@ -1,7 +1,7 @@
 {
   "name": "kimi-cli-desktop",
   "productName": "Kimi Code Desktop",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "Unofficial desktop shell for the Kimi Code CLI — run interactive Kimi Code sessions in tabs, resume previous sessions, and drive the agent from one place. Not affiliated with Moonshot AI.",
   "main": "main.js",
   "author": "Kimi Code Desktop contributors",
