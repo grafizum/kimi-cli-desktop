@@ -126,7 +126,9 @@ function Write-DownloadBar($read, $total, $elapsedSec) {
         # Server sent no Content-Length: show the running counter instead.
         $line = "{0,7:N1} MB{1}" -f ($read / 1MB), $extra
     }
-    Write-Host ("`r" + $line.PadRight($width + 46)) -NoNewline
+    # Pad wider than the longest possible frame (bar + percent + MB + speed
+    # + "ETA hh:mm:ss" is ~75 chars) so no ghost of the previous frame remains.
+    Write-Host ("`r" + $line.PadRight($width + 54)) -NoNewline
 }
 
 function Download-WithProgress($url, $dest) {
