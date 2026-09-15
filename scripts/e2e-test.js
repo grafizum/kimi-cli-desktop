@@ -74,6 +74,7 @@ function walkFiles(dir) {
 const USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'kcd-e2e-'));
 
 let failures = 0;
+let threw = false;
 function ok(cond, name, extra) {
   if (cond) console.log(`  ✓ ${name}`);
   else {
@@ -81,8 +82,11 @@ function ok(cond, name, extra) {
     console.error(`  ✗ ${name}${extra ? ` — ${extra}` : ''}`);
     // GitHub Actions turns each of these into a red annotation on the run
     // summary — the only failure detail readable without admin log access.
+    // Workflow commands are only scanned on STDOUT, so this must not go to
+    // stderr (learned the hard way: stderr ::error:: lines are silently
+    // ignored and the annotation never appears).
     const detail = extra === undefined ? '' : ` :: ${String(extra).slice(0, 400)}`;
-    console.error(`::error::E2E assertion failed: ${name}${detail}`);
+    console.log(`::error::E2E assertion failed: ${name}${detail}`);
   }
 }
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -528,12 +532,15 @@ async function main() {
 
 main()
   .catch((err) => {
+    // The finally block reports soft failures; a thrown error is the hard
+    // path, so annotate here and remember not to double-report below.
+    threw = true;
     failures += 1;
     console.error('\nE2E ERROR:', err.message);
     if (appStderrTail.trim()) console.error('\n--- last Electron stderr ---\n' + appStderrTail + '\n----------------------------');
     // Surfaces as a red annotation on the GitHub Actions run summary —
     // readable without admin log access.
-    console.error(`::error::E2E failed: ${err.message}${appStderrTail.trim() ? ` :: ${appStderrTail.trim().split('\n').slice(-3).join(' | ')}` : ''}`);
+    console.log(`::error::E2E failed: ${err.message}${appStderrTail.trim() ? ` :: ${appStderrTail.trim().split('\n').slice(-3).join(' | ')}` : ''}`);
   })
   .finally(() => {
     // On a GPU-less host (VM / container / RDP) the app relaunches itself with
@@ -544,11 +551,11 @@ main()
 
     try { if (ws) ws.close(); } catch { /* already closed */ }
 
-    if (failures > 0) {
+    if (failures > 0 && !threw) {
       // Soft failures (assertions that returned false) exit through here
-      // rather than the catch below — surface them as annotations too, or the
+      // rather than the catch above — surface them as annotations too, or the
       // only CI evidence would be a bare "exit code 1".
-      console.error(`::error::E2E finished with ${failures} failed assertion(s)`);
+      console.log(`::error::E2E finished with ${failures} failed assertion(s)`);
     }
 
     // Let Node exit on its own so buffered stdout (test output) flushes fully —
