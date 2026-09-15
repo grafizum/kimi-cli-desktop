@@ -276,6 +276,13 @@
             <span class="field-hint">Usually installed to:<br /><span id="st-kimi-candidates"></span></span>
           </label>
           <label class="field">
+            <span class="field-label">KIMI_SHELL_PATH (Windows: Git Bash)</span>
+            <input id="st-shell-path" type="text" placeholder="Optional — auto-detected Git Bash is used" spellcheck="false" />
+          </label>
+        </fieldset>
+        <fieldset data-panel="sessions" class="hidden">
+          <legend>Sessions</legend>
+          <label class="field">
             <span class="field-label">Sessions folder (KIMI_CODE_HOME)</span>
             <span class="field-row">
               <input id="st-kimi-home" type="text" placeholder="Leave empty for ~/.kimi-code" spellcheck="false" />
@@ -283,13 +290,6 @@
             </span>
             <span id="st-kimi-home-hint" class="field-hint">Where Kimi stores sessions, config and credentials. Changing this switches to a different session history.</span>
           </label>
-          <label class="field">
-            <span class="field-label">KIMI_SHELL_PATH (Windows: Git Bash)</span>
-            <input id="st-shell-path" type="text" placeholder="Optional — auto-detected Git Bash is used" spellcheck="false" />
-          </label>
-        </fieldset>
-        <fieldset data-panel="sessions" class="hidden">
-          <legend>Default session behavior</legend>
           <label class="field">
             <span id="st-cwd-label" class="field-label">Default working directory</span>
             <span class="field-row">

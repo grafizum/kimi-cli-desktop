@@ -582,10 +582,12 @@ function renderSessionList() {
           <div class="se-text">Sessions are read from the folder<br/>below. Copy a session history into it<br/>and press the refresh arrow above.</div>
           <code class="se-path" title="${esc(shown)}">${esc(short)}</code>
           <div class="se-actions">
-            <button id="se-change-home" class="btn ghost" title="Choose the folder Kimi reads sessions from — opens Settings">Change Folder</button>
+            <button id="se-change-home" class="btn ghost" title="Choose the folder Kimi reads sessions from — opens Settings → Sessions">Change Folder</button>
           </div>
         </div>`;
-      $('#se-change-home')?.addEventListener('click', () => openSettingsModal('cli'));
+      // The session folder lives on the Sessions tab, not Kimi CLI —
+      // opening 'cli' landed users on the executable-path form instead.
+      $('#se-change-home')?.addEventListener('click', () => openSettingsModal('sessions'));
     }
     return;
   }

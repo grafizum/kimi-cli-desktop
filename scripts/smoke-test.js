@@ -409,6 +409,15 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
   ok(/setSettingsTab[\s\S]*?loadConfigIntoView\(\)/.test(appSrc),
     'the config.toml tab loads the file when it is shown');
 
+  // The session folder belongs to the Sessions tab: the empty-history
+  // "Change Folder" button must open exactly that tab, not Kimi CLI.
+  const sessionsPanel = (htmlSrc.match(/<fieldset data-panel="sessions"[\s\S]*?<\/fieldset>/) || [''])[0];
+  const cliPanel = (htmlSrc.match(/<fieldset data-panel="cli"[\s\S]*?<\/fieldset>/) || [''])[0];
+  ok(/id="st-kimi-home"/.test(sessionsPanel) && !/id="st-kimi-home"/.test(cliPanel),
+    'the session-folder setting lives on the Sessions tab, not Kimi CLI');
+  ok(/openSettingsModal\('sessions'\)/.test(appSrc),
+    'the empty-history "Change Folder" button opens the Sessions tab');
+
   ok(/\[data-theme="light"\]/.test(cssSrc) && /color-scheme:\s*light/.test(cssSrc),
     'light theme defined and pins color-scheme: light');
   ok(/color-scheme:\s*dark/.test(cssSrc),

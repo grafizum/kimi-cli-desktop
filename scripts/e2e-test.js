@@ -545,9 +545,33 @@ async function main() {
   // 11. Changing the session folder (KIMI_CODE_HOME) and pressing Apply must
   // reload the window: the app re-boots against the new home with no manual
   // restart. Driven last — the reload kills live sessions and rebuilds the UI.
+  // The empty-history "Change Folder" button must land on the Sessions tab —
+  // it used to open the Kimi CLI tab, where the folder field never was.
+  // Driven before the real test: it swaps KIMI_CODE_HOME, which the reload
+  // test below would then inherit.
+  console.log('\n[e2e] empty-state "Change Folder" opens the Sessions tab');
+  await evalJS(`__kcd.state.sessions = []; __kcd.renderSessionList()`);
+  await evalJS(`document.querySelector('#se-change-home').click()`);
+  ok((await evalJS(`!document.querySelector('#modal-settings').classList.contains('hidden')`)),
+    'the Change Folder button opens the settings modal');
+  ok((await evalJS(`document.querySelector('.settings-tab[data-tab="sessions"]').getAttribute('aria-selected')`)) === 'true',
+    'it opens on the Sessions tab, not the Kimi CLI tab');
+  await evalJS(`document.querySelector('#st-cancel').click()`);
+  // Section 9a left the search filter set; clear it or the restored history
+  // would still render filtered down to one row.
+  await evalJS(`__kcd.state.filter = ''; __kcd.refreshSessions()`);
+  await waitFor(async () => (await evalJS(`document.querySelectorAll('.session-item').length`)) === 2,
+    'session history restored after the modal round-trip');
+
   console.log('\n[e2e] settings: session folder change triggers reload');
   await evalJS(`document.querySelector('#btn-settings').click()`);
-  await evalJS(`document.querySelector('.settings-tab[data-tab="cli"]').click()`);
+  // The session-folder setting belongs to the Sessions tab (moved out of the
+  // CLI tab — the "Change Folder" button on the empty history list opens it).
+  await evalJS(`document.querySelector('.settings-tab[data-tab="sessions"]').click()`);
+  ok((await evalJS(`!document.querySelector('fieldset[data-panel="sessions"]').classList.contains('hidden')`)),
+    'the Sessions settings panel shows the session-folder field');
+  ok((await evalJS(`document.querySelector('#st-kimi-home').closest('fieldset').dataset.panel`)) === 'sessions',
+    'the session-folder input lives on the Sessions tab, not Kimi CLI');
   ok((await evalJS(`document.querySelector('#st-save').textContent.trim()`)) === 'Apply changes',
     'the settings action button is labelled "Apply changes"');
   await evalJS(`document.querySelector('#st-kimi-home').value = ${JSON.stringify(FAKE_HOME2)}`);
