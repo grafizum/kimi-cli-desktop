@@ -154,9 +154,21 @@ The e2e suite uses `test-fixtures/` (a fake `kimi` executable and a synthetic da
 
 Releases are automated by GitHub Actions: push a tag and installers for all three OSes are built and attached to the release.
 
+The **recommended way** is one command — it refuses a dirty tree, runs the smoke *and* e2e suites *before* anything is tagged, commits the version bump, tags, pushes, waits for the Release workflow, and finally verifies every installer URL answers 200:
+
 ```bash
+node scripts/release.js            # interactive confirmation
+node scripts/release.js --yes      # no prompt
+node scripts/release.js 1.2.0      # explicit version instead of auto-bump
+```
+
+The manual equivalent (what the script automates):
+
+```bash
+npm run smoke && npm run e2e      # before touching the tag!
+# bump "version" in package.json and commit
 git tag v1.0.0
-git push origin v1.0.0
+git push origin main v1.0.0
 ```
 
 ## 🔒 Security & privacy

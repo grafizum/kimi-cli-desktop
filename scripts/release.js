@@ -41,11 +41,9 @@ const die = (m) => {
 // Helpers
 // ---------------------------------------------------------------------------
 function sh(cmd, cmdArgs, opts = {}) {
-  return execFileSync(cmd, cmdArgs, {
-    cwd: ROOT,
-    encoding: 'utf8',
-    ...opts,
-  }).trim();
+  // stdio: 'inherit' makes execFileSync return null — callers rely on a string.
+  const out = execFileSync(cmd, cmdArgs, { cwd: ROOT, encoding: 'utf8', ...opts });
+  return out == null ? '' : String(out).trim();
 }
 
 function git(argv, opts) {
