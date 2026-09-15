@@ -76,7 +76,14 @@ const USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'kcd-e2e-'));
 let failures = 0;
 function ok(cond, name, extra) {
   if (cond) console.log(`  ✓ ${name}`);
-  else { failures += 1; console.error(`  ✗ ${name}${extra ? ` — ${extra}` : ''}`); }
+  else {
+    failures += 1;
+    console.error(`  ✗ ${name}${extra ? ` — ${extra}` : ''}`);
+    // GitHub Actions turns each of these into a red annotation on the run
+    // summary — the only failure detail readable without admin log access.
+    const detail = extra === undefined ? '' : ` :: ${String(extra).slice(0, 400)}`;
+    console.error(`::error::E2E assertion failed: ${name}${detail}`);
+  }
 }
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -536,6 +543,13 @@ main()
     reap();
 
     try { if (ws) ws.close(); } catch { /* already closed */ }
+
+    if (failures > 0) {
+      // Soft failures (assertions that returned false) exit through here
+      // rather than the catch below — surface them as annotations too, or the
+      // only CI evidence would be a bare "exit code 1".
+      console.error(`::error::E2E finished with ${failures} failed assertion(s)`);
+    }
 
     // Let Node exit on its own so buffered stdout (test output) flushes fully —
     // a hard process.exit() here silently drops it on Windows. The unref'd
