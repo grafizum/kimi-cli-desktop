@@ -89,9 +89,11 @@ Grab an installer straight from [**Releases**](https://github.com/grafizum/kimi-
 
 ## 🖼 Screenshots
 
-| Main window — sessions, tabs, live terminal | Settings — config.toml editor, theme, CLI options |
+| Main window — sessions, tabs, live terminal | Boot splash |
 | --- | --- |
-| <img src="docs/screenshots/main.png" alt="Main window" width="480" /> | <img src="docs/screenshots/settings.png" alt="Settings with config.toml editor" width="480" /> |
+| <img src="docs/screenshots/main.png" alt="Main window with the session history sidebar, tabs and a live terminal" width="480" /> | <img src="docs/screenshots/splash.png" alt="The Kimi boot splash with the animated logo" width="480" /> |
+| **Settings → config.toml** — the CLI's own config, edited in place | **Settings → Sessions** — session folder and defaults |
+| <img src="docs/screenshots/settings.png" alt="Settings with the config.toml editor" width="480" /> | <img src="docs/screenshots/settings-sessions.png" alt="Settings, Sessions tab with the session folder setting" width="480" /> |
 
 ## 🚀 Usage
 
