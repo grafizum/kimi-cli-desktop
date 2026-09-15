@@ -65,7 +65,7 @@ The script picks the right build for your OS and architecture from the [latest r
 
 | OS | What you get |
 | --- | --- |
-| Windows | Portable `exe` in `%LOCALAPPDATA%\Programs\Kimi Code Desktop` + Start Menu & Desktop shortcuts |
+| Windows | Silent Setup into `%LOCALAPPDATA%\Programs\kimi-cli-desktop` — searchable Start Menu entry + entry in "Add or Remove Programs" |
 | Linux | `AppImage` in `~/.local/bin` + app-menu entry (works even without FUSE — it auto-extracts) |
 | macOS | `dmg` opened in Finder — drag the app into Applications |
 
