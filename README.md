@@ -30,9 +30,12 @@
 
 It does **not** reimplement the agent through an API — it runs the *real* `kimi` CLI in a pseudo-terminal, so you get the complete, up-to-date TUI with all of its features: tools, MCP servers, plan mode, permission prompts, and reasoning panels.
 
+> [!NOTE]
+> **The thinking/reasoning is not wrapped — it's the real thing.** Most desktop apps for coding agents rebuild the UI from an API stream, which means they re-style, truncate or outright drop the model's reasoning. This app does none of that: the thinking blocks you see are drawn by the *actual* Kimi Code TUI itself, in a real PTY, exactly as the CLI shows them in a plain terminal. Nothing sits in between to drift, lag behind CLI updates, or hide parts of the reasoning.
+
 ## ✨ Features
 
-- **Real interactive sessions** — the actual Kimi Code TUI renders inside xterm.js, reasoning included. Every CLI feature just works: slash commands, `/plan`, `/fork`, MCP, approvals, keyboard shortcuts.
+- **Real interactive sessions** — the actual Kimi Code TUI renders inside xterm.js, thinking/reasoning included — the genuine CLI output, not a re-wrapped imitation like most other desktop apps. Every CLI feature just works: slash commands, `/plan`, `/fork`, MCP, approvals, keyboard shortcuts.
 - **Multiple concurrent sessions** — each session gets its own tab with its own process. Switch with `Ctrl+Tab`, close with the ✕.
 - **Session history** — reads the CLI's own on-disk history (`~/.kimi-code/sessions/`), grouped by date, searchable, with project name, git branch and last activity. Click any session to **resume** it where you left off, or hit the folder icon to open the sessions directory and drop in a history from another machine.
 - **Session actions** — resume · fork into a new session (`kimi fork`) · export as ZIP (`kimi export`) · copy session ID.
