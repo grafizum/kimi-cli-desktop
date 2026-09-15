@@ -100,21 +100,33 @@ function Clean-Err($err) {
     return $err.Exception.Message
 }
 
-function Write-DownloadBar($read, $total) {
-    # A bar that is really IN the console output - curl-style, animating with
-    # carriage returns - because Write-Progress renders in a transient pane
-    # that vanishes when it completes and never reaches redirected output.
-    $width = 28
+function Write-DownloadBar($read, $total, $elapsedSec) {
+    # A bar that is really IN the console output - curl-style, redrawn in
+    # place with carriage returns (Write-Progress renders in a transient pane
+    # that vanishes when it completes and never reaches redirected output).
+    # Speed and ETA make even a slow connection visibly alive.
+    $width = 26
+    $extra = ""
+    if ($elapsedSec -ge 1) {
+        $speed = $read / $elapsedSec
+        if ($speed -gt 0) {
+            $extra = "   {0,5:N1} MB/s" -f ($speed / 1MB)
+            if ($total -and $read -lt $total) {
+                $eta = [TimeSpan]::FromSeconds([math]::Ceiling(($total - $read) / $speed))
+                $extra += "  ETA {0:hh\:mm\:ss}" -f $eta
+            }
+        }
+    }
     if ($total) {
         $pct  = [math]::Min(100, [int](100 * $read / $total))
         $fill = [int]($width * $pct / 100)
         $bar  = ("#" * $fill) + ("-" * ($width - $fill))
-        $line = "[{0}] {1,3}%  {2,7:N1} / {3:N1} MB" -f $bar, $pct, ($read / 1MB), ($total / 1MB)
+        $line = "[{0}] {1,3}%  {2,6:N1}/{3,6:N1} MB{4}" -f $bar, $pct, ($read / 1MB), ($total / 1MB), $extra
     } else {
         # Server sent no Content-Length: show the running counter instead.
-        $line = "{0,7:N1} MB downloaded" -f ($read / 1MB)
+        $line = "{0,7:N1} MB{1}" -f ($read / 1MB), $extra
     }
-    Write-Host ("`r" + $line.PadRight($width + 24)) -NoNewline
+    Write-Host ("`r" + $line.PadRight($width + 46)) -NoNewline
 }
 
 function Download-WithProgress($url, $dest) {
@@ -125,29 +137,37 @@ function Download-WithProgress($url, $dest) {
     Add-Type -AssemblyName System.Net.Http
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $client = New-Object System.Net.Http.HttpClient
-    $client.Timeout = [TimeSpan]::FromMinutes(10)
+    $client.Timeout = [TimeSpan]::FromMinutes(30)
     $client.DefaultRequestHeaders.UserAgent.ParseAdd($UserAgent)
     try {
-        $resp = $client.GetAsync($url).GetAwaiter().GetResult()
+        # ResponseHeadersRead is the whole point of this function: GetAsync
+        # returns as soon as the headers arrive and the body is streamed
+        # below, read by read. The default option (ResponseContentRead)
+        # silently buffered the entire ~100 MB first - the bar sat frozen on
+        # the "Downloading ..." line and then jumped to 100% in an instant,
+        # because the loop only drained an already-complete memory buffer.
+        $resp = $client.GetAsync($url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
         if (-not $resp.IsSuccessStatusCode) { throw "HTTP $([int]$resp.StatusCode) for $url" }
         $total  = $resp.Content.Headers.ContentLength
         $stream = $resp.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
         $out    = [System.IO.File]::Create($dest)
         try {
-            $buffer = New-Object byte[] 524288
+            $buffer = New-Object byte[] 262144   # 256 KB: frequent, smooth updates
             $read   = [long]0
             $lastPct = -1
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
             while (($n = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
                 $out.Write($buffer, 0, $n)
+                $out.Flush()
                 $read += $n
                 if ($total) {
                     $pct = [math]::Min(100, [int](100 * $read / $total))
-                    if ($pct -ne $lastPct) { Write-DownloadBar $read $total; $lastPct = $pct }
+                    if ($pct -ne $lastPct) { Write-DownloadBar $read $total $sw.Elapsed.TotalSeconds; $lastPct = $pct }
                 } else {
-                    Write-DownloadBar $read $total
+                    Write-DownloadBar $read $total $sw.Elapsed.TotalSeconds
                 }
             }
-            Write-DownloadBar $read $total
+            Write-DownloadBar $read $total $sw.Elapsed.TotalSeconds
             Write-Host ""   # finish the bar line
         } finally { $out.Dispose(); $stream.Dispose() }
     } finally { $client.Dispose() }
@@ -195,7 +215,8 @@ function Main {
 
     # --- Download (with one automatic retry) --------------------------------
     $tmp = Join-Path $env:TEMP $asset.name
-    Say "Downloading $($asset.name) ..."
+    $sizeMb = [math]::Round($asset.size / 1MB, 1)
+    Say "Downloading $($asset.name) ($sizeMb MB) ..."
     $attempt = 0
     while ($true) {
         $attempt++
