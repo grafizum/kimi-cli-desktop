@@ -92,11 +92,35 @@ function Ensure-KimiCli {
     else { Info "CLI installed. Open a NEW terminal (or just launch the app) so PATH changes take effect." }
 }
 
+function Clean-Err($err) {
+    # .NET method-call failures arrive wrapped ("Exception calling ..."),
+    # which reads like a crash. Print only the actual reason underneath.
+    $inner = $err.Exception.InnerException
+    if ($inner -and $inner.Message) { return $inner.Message }
+    return $err.Exception.Message
+}
+
+function Write-DownloadBar($read, $total) {
+    # A bar that is really IN the console output - curl-style, animating with
+    # carriage returns - because Write-Progress renders in a transient pane
+    # that vanishes when it completes and never reaches redirected output.
+    $width = 28
+    if ($total) {
+        $pct  = [math]::Min(100, [int](100 * $read / $total))
+        $fill = [int]($width * $pct / 100)
+        $bar  = ("#" * $fill) + ("-" * ($width - $fill))
+        $line = "[{0}] {1,3}%  {2,7:N1} / {3:N1} MB" -f $bar, $pct, ($read / 1MB), ($total / 1MB)
+    } else {
+        # Server sent no Content-Length: show the running counter instead.
+        $line = "{0,7:N1} MB downloaded" -f ($read / 1MB)
+    }
+    Write-Host ("`r" + $line.PadRight($width + 24)) -NoNewline
+}
+
 function Download-WithProgress($url, $dest) {
-    # Streams the response in 1 MB chunks so a real progress bar can be drawn
-    # (percent + MB downloaded / MB total). Plain Invoke-WebRequest buffers
-    # everything and, with its own progress bar suppressed for speed, would
-    # sit silent for a minute on a ~100 MB asset.
+    # Streams the response in 512 KB chunks and redraws the bar per chunk.
+    # Plain Invoke-WebRequest buffers everything and would sit silent for a
+    # minute on a ~100 MB asset.
     # PS 5.1 does not load this assembly by default.
     Add-Type -AssemblyName System.Net.Http
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -110,18 +134,21 @@ function Download-WithProgress($url, $dest) {
         $stream = $resp.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
         $out    = [System.IO.File]::Create($dest)
         try {
-            $buffer = New-Object byte[] 1048576
+            $buffer = New-Object byte[] 524288
             $read   = [long]0
+            $lastPct = -1
             while (($n = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
                 $out.Write($buffer, 0, $n)
                 $read += $n
                 if ($total) {
                     $pct = [math]::Min(100, [int](100 * $read / $total))
-                    $status = "{0:N1} / {1:N1} MB" -f ($read / 1MB), ($total / 1MB)
-                    Write-Progress -Activity "Downloading Kimi Code Desktop" -Status $status -PercentComplete $pct
+                    if ($pct -ne $lastPct) { Write-DownloadBar $read $total; $lastPct = $pct }
+                } else {
+                    Write-DownloadBar $read $total
                 }
             }
-            Write-Progress -Activity "Downloading Kimi Code Desktop" -Completed
+            Write-DownloadBar $read $total
+            Write-Host ""   # finish the bar line
         } finally { $out.Dispose(); $stream.Dispose() }
     } finally { $client.Dispose() }
 }
@@ -133,8 +160,19 @@ function Main {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     $headers = @{ "User-Agent" = $UserAgent }
-    # Failures here bubble up to the wrapper below, which prints the real reason.
-    $release = Invoke-RestMethod -Uri $Api -Headers $headers -ErrorAction Stop
+    # A refused connection on the first try is usually a momentary network
+    # blip - retry calmly before giving up (GitHub had one of those today).
+    $release = $null
+    foreach ($try in 1..3) {
+        try {
+            $release = Invoke-RestMethod -Uri $Api -Headers $headers -ErrorAction Stop
+            break
+        } catch {
+            if ($try -ge 3) { throw "Could not reach GitHub: $(Clean-Err $_)" }
+            Warn "Could not reach GitHub (try $try of 3) - retrying ..."
+            Start-Sleep -Seconds (2 * $try)
+        }
+    }
 
     # Prefer the NSIS Setup: it installs properly (Start Menu entry +
     # uninstaller). The portable exe is only a fallback for odd cases.
@@ -166,8 +204,10 @@ function Main {
             break
         } catch {
             Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-            if ($attempt -ge 2) { throw "Download failed: $($_.Exception.Message)" }
-            Warn "Download hiccup ($($_.Exception.Message)) - retrying ..."
+            Write-Host ""
+            if ($attempt -ge 2) { throw "Download failed: $(Clean-Err $_)" }
+            Warn "Network hiccup - retrying (try $($attempt + 1) of 2) ..."
+            Start-Sleep -Seconds 2
         }
     }
 
