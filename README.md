@@ -4,10 +4,11 @@
 
 # Kimi Code Desktop — Web edition
 
-**The Kimi Code CLI's own chat interface, in a desktop window. Nothing else.**
+**A desktop app that embeds the Kimi Code CLI's own web chat — `kimi web` — fullscreen. Not a terminal app, not a reimplementation: the real CLI interface, in a native window.**
 
 [![CI](https://github.com/grafizum/kimi-cli-desktop/actions/workflows/ci.yml/badge.svg?branch=kimi-web-desktop)](https://github.com/grafizum/kimi-cli-desktop/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-orange)](#-install)
+![Edition](https://img.shields.io/badge/edition-kimi%20web%20wrapper-blue)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 [![Unofficial](https://img.shields.io/badge/status-unofficial%20project-red)](#-legal-notice)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,6 +16,9 @@
 </div>
 
 ---
+
+> [!WARNING]
+> **This is NOT the terminal edition.** This release is a **wrapper around the Kimi Code CLI's own web chat interface** inside a desktop app — there is no terminal, no session tabs, no TUI here. If you want the classic Kimi Code Desktop (tabs, session-history sidebar, terminal), install the **[CLI edition instead](https://github.com/grafizum/kimi-cli-desktop)** (branch `main`, released as plain `v*` tags). Both can be installed side by side.
 
 > [!IMPORTANT]
 > **Unofficial project — not associated with the official Kimi developers.**
@@ -28,11 +32,12 @@ This branch (`kimi-web-desktop`) is the **web edition** of Kimi Code Desktop: th
 
 > **The reasoning you see is the real thing.** Nothing sits between the CLI's output and your eyes to re-style, truncate, or lag behind CLI updates.
 
-## The two editions
+## The two editions — pick the right one
 
-| | Web edition (this branch) | CLI edition (branch `main`) |
+| | **Web edition** (this branch) | **CLI edition** (branch `main`) |
 |---|---|---|
-| **The app is** | the CLI's `kimi web` chat, fullscreen | tabs + sidebar + the classic TUI *and* chat |
+| **What you see** | the CLI's own **chat UI**, fullscreen | tabs + sidebar + the **terminal TUI** (and chat) |
+| **Terminal inside?** | ❌ none — it is a web chat wrapper | ✅ the classic kimi TUI |
 | **Sessions** | one live chat window; history lives in the web UI's own sidebar | full session-history sidebar with resume/fork/export |
 | **Best for** | a clean, chat-first desktop client | power users who live in tabs and the TUI |
 | **Released as** | tags `web-v*` → `Kimi-Code-Desktop-Web-*` artifacts | tags `v*` → `Kimi-Code-Desktop-*` artifacts |

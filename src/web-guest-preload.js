@@ -18,6 +18,10 @@ try {
   try {
     localStorage.setItem('kimi-web.color-scheme', scheme);
     document.documentElement.dataset.colorScheme = scheme;
+    // Denser interface: the shell's chrome is compact, so the guest starts at
+    // the web UI's own 'small' scale (boot.js honors it pre-paint). The user
+    // can still change the scale inside the chat; this only sets the default.
+    localStorage.setItem('kimi-web.font-scale', 'small');
     // The desktop app drives its own settings; the web UI's first-run
     // introduction (appearance pick, workspace walkthrough) is noise inside a
     // host that already has one. The served URL also carries ?kimi_onboarded=1
