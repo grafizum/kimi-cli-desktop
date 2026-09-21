@@ -949,6 +949,19 @@ body:not(.term-classic) .tab.active {
   transition: opacity 0.12s ease;
 }
 
+/* Full-bleed chat: the embedded Kimi chat UI IS the app's face — no card
+   inset, no border, edge to edge (these rules follow the framed-card block on
+   purpose: equal specificity, later wins). The stage paints the terminal
+   background so a slow webview load never flashes the chrome grey. */
+body.chat-active #terminal-stage { background: var(--terminal-bg); }
+body.chat-active .terminal-host,
+body.chat-active .terminal-host:focus-within {
+  inset: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Chat ⇄ Terminal switch, pinned top-right of the pane. The card aesthetic:
    joined segment buttons, active side filled with the accent. */
 .view-switch {

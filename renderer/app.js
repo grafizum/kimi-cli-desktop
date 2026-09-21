@@ -1242,6 +1242,15 @@ function createTab({ id, label, kind, web, url }) {
 // other one — the conversation never forks, only its face changes.
 // ---------------------------------------------------------------------------
 
+// The chat view is the app's face, not a card inside it: while a chat tab is
+// on stage the terminal-host card is dissolved and the web UI runs edge to
+// edge (body.chat-active in styles.css). Recomputed on every activation and
+// view change.
+function applyChatActive() {
+  const t = state.tabs.get(state.activeTabId);
+  document.body.classList.toggle('chat-active', !!(t && t.view === 'chat' && t.webview));
+}
+
 function applyTabView(tab) {
   const chat = tab.view === 'chat' && tab.webview;
   if (tab.webview) tab.webview.style.display = chat ? 'block' : 'none';
@@ -1474,6 +1483,7 @@ function setTabLabel(tab, label) {
 
 function activateTab(id) {
   state.activeTabId = id;
+  applyChatActive();
   for (const [tid, t] of state.tabs) {
     const active = tid === id;
     t.tabEl.classList.toggle('active', active);
@@ -1499,6 +1509,7 @@ function activateTab(id) {
   // A terminal is on stage — the welcome placeholder has no business showing.
   const welcome = $('#welcome');
   if (welcome) welcome.classList.add('hidden');
+  applyChatActive();
 }
 
 function sendResize(tab) {
@@ -1536,7 +1547,7 @@ async function closeTab(tab) {
   if (state.activeTabId === tab.id) {
     const ids = [...state.tabs.keys()];
     if (ids.length) activateTab(ids[ids.length - 1]);
-    else state.activeTabId = null;
+    else { state.activeTabId = null; applyChatActive(); }
   }
   refreshSessions();
 }
