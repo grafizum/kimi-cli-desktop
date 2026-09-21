@@ -28,6 +28,9 @@
 > [!NOTE]
 > **Status: beta.** Windows and Linux are the tested platforms. The macOS build is **untested so far** (no Apple hardware has run this code yet) — treat the `dmg` as experimental. Expect rough edges and please [report anything you hit](https://github.com/grafizum/kimi-cli-desktop/issues).
 
+> [!NOTE]
+> **Two editions ship from this repo.** This `main` branch is the **CLI edition** (tabs, session history, the terminal TUI + chat). The [`kimi-web-desktop`](https://github.com/grafizum/kimi-cli-desktop/tree/kimi-web-desktop) branch is the **Web edition** — just the Kimi chat UI, fullscreen — released separately as `web-v*` tags with `Kimi-Code-Desktop-Web-*` assets and its own [install scripts](https://github.com/grafizum/kimi-cli-desktop/blob/kimi-web-desktop/README.md#-install). The installers on each side only ever pick their own edition's assets.
+
 It does **not** reimplement the agent through an API — it runs the *real* `kimi` CLI. Sessions render through the CLI's **own surfaces**: either its built-in **Kimi chat UI** (served by the CLI's `kimi web` server, embedded in the app) or the classic **terminal TUI** in a pseudo-terminal — so you get the complete, up-to-date feature set either way: tools, MCP servers, plan mode, permission prompts, file uploads and reasoning panels.
 
 > [!NOTE]

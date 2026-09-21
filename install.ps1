@@ -198,15 +198,20 @@ function Main {
 
     # Prefer the NSIS Setup: it installs properly (Start Menu entry +
     # uninstaller). The portable exe is only a fallback for odd cases.
+    # Anchored to CLI-EDITION assets ("-Setup-" with NO "Web-" prefix): the
+    # repo also publishes a Web edition (Kimi-Code-Desktop-Web-*) whose
+    # Setup-…x64.exe would otherwise match — releases/latest points at the
+    # newest tag of EITHER edition, so a bare match could install the wrong
+    # app.
     $asset = $release.assets |
-        Where-Object { $_.name -match "Setup-.*x64\.exe$" } | Select-Object -First 1
+        Where-Object { $_.name -notmatch "Web-" -and $_.name -match "Setup-.*x64\.exe$" } | Select-Object -First 1
     if (-not $asset) {
         $asset = $release.assets |
-            Where-Object { $_.name -match "portable\.exe$" -and $_.name -match "x64" } |
+            Where-Object { $_.name -notmatch "Web-" -and $_.name -match "portable\.exe$" -and $_.name -match "x64" } |
             Select-Object -First 1
     }
     if (-not $asset) {
-        $asset = $release.assets | Where-Object { $_.name -match "portable\.exe$" } | Select-Object -First 1
+        $asset = $release.assets | Where-Object { $_.name -notmatch "Web-" -and $_.name -match "portable\.exe$" } | Select-Object -First 1
     }
     if (-not $asset) {
         throw "No Windows build in the latest release ($($release.tag_name)). Install manually from $ReleasePage"

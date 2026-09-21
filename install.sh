@@ -120,11 +120,14 @@ ASSET_URLS="$(printf '%s\n' "$RELEASE_JSON" \
 
 case "$OS" in
   # electron-builder spells the arch differently per OS: Linux x64 assets are
-  # named "x86_64", macOS/Windows ones are named "x64".
-  linux) ASSET="$(printf '%s\n' "$ASSET_URLS" | grep -F ".AppImage" | grep -F "$ARCH" | head -n 1 || true)" ;;
+  # named "x86_64", macOS/Windows ones are named "x64". Anchored to
+  # CLI-EDITION assets (NO "Web-"): the repo also publishes a Web edition
+  # (Kimi-Code-Desktop-Web-*) and releases/latest points at the newest tag of
+  # EITHER edition, so a bare match could install the wrong app.
+  linux) ASSET="$(printf '%s\n' "$ASSET_URLS" | grep -v "Web-" | grep -F ".AppImage" | grep -F "$ARCH" | head -n 1 || true)" ;;
   macos)
     MAC_ARCH="x64"; [ "$ARCH" = "arm64" ] && MAC_ARCH="arm64"
-    ASSET="$(printf '%s\n' "$ASSET_URLS" | grep -F ".dmg" | grep -F "$MAC_ARCH" | head -n 1 || true)" ;;
+    ASSET="$(printf '%s\n' "$ASSET_URLS" | grep -v "Web-" | grep -F ".dmg" | grep -F "$MAC_ARCH" | head -n 1 || true)" ;;
 esac
 
 [ -n "$ASSET" ] || die "No release asset for ${OS}/${ARCH} yet. Publish a release first, or install from source (see the README)."
