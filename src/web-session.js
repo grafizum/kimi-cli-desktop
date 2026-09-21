@@ -78,6 +78,17 @@ function isAllowedWebUrl(url) {
   }
 }
 
+/**
+ * Add the Kimi web UI's official onboarding skip to a served URL: loading with
+ * ?kimi_onboarded=1 makes the UI persist kimi-web.onboarded=1 and skip its
+ * first-run introduction. Inside the desktop app that intro is noise — the host
+ * drives appearance/settings itself. The URL fragment (#token=…) must stay
+ * last, so the query goes before it.
+ */
+function withOnboardingSkip(url) {
+  return String(url || '').replace('/#', '/?kimi_onboarded=1#');
+}
+
 function newId() {
   return crypto.randomBytes(8).toString('hex');
 }
@@ -153,7 +164,9 @@ function startWebServer(opts = {}) {
     if (!url) {
       const parsed = parseServerUrl(log);
       if (parsed) {
-        url = parsed.url;
+        // See withOnboardingSkip: the webview must never land on the web
+        // UI's own first-run introduction.
+        url = withOnboardingSkip(parsed.url);
         token = parsed.token;
         emit('ready', { url, token, port: parsed.port || port });
       }
@@ -217,7 +230,7 @@ function startWebServer(opts = {}) {
 }
 
 module.exports = {
-  buildWebArgs, parseServerUrl, isServerReadyLine, isAllowedWebUrl,
+  buildWebArgs, parseServerUrl, isServerReadyLine, isAllowedWebUrl, withOnboardingSkip,
   startWebServer, pickPort, newId,
   PORT_RANGE_START, PORT_RANGE_SIZE, SERVER_READY_TIMEOUT_MS,
 };

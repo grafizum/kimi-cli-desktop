@@ -937,8 +937,11 @@ body:not(.term-classic) .tab.active {
 /* ------------------------------------------------------------------ */
 /* A chat tab carries TWO surfaces inside its pane: the <webview> (Kimi's
    genuine chat UI, served by the tab's own `kimi web` server) and the xterm
-   underneath. applyTabView() shows exactly one; the transition on the webview
-   keeps a view switch from flashing a half-painted frame. */
+   underneath. applyTabView() shows exactly one. The webview is ALWAYS laid
+   out (visibility, never display:none): Electron attaches the guest at the
+   size it has at navigation, and a display:none webview attaches at 0x0 and
+   stays a black rectangle even after it is shown again. JS syncs explicit
+   pixel sizes on every pane resize on top of this. */
 .term-pane webview {
   position: absolute;
   inset: 0;
@@ -946,8 +949,9 @@ body:not(.term-classic) .tab.active {
   height: 100%;
   border: none;
   background: var(--terminal-bg);
-  transition: opacity 0.12s ease;
+  visibility: hidden;
 }
+.term-pane webview.webview-live { visibility: visible; }
 
 /* Full-bleed chat: the embedded Kimi chat UI IS the app's face — no card
    inset, no border, edge to edge (these rules follow the framed-card block on

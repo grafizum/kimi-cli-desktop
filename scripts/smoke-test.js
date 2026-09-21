@@ -771,6 +771,28 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     'banner: a URL without a token is not accepted');
   ok(webSession.isServerReadyLine('Kimi server ready 2.0.2'), 'banner: the ready line is recognised');
 
+  // The URL handed to the webview carries the UI's official onboarding skip:
+  // loading with ?kimi_onboarded=1 makes the Kimi web UI persist its onboarded
+  // flag and skip its first-run introduction (the desktop app drives settings).
+  ok(webSession.withOnboardingSkip('http://127.0.0.1:58627/#token=abc123')
+    === 'http://127.0.0.1:58627/?kimi_onboarded=1#token=abc123',
+    'onboarding skip: the query lands BEFORE the #token fragment');
+  ok(webSession.withOnboardingSkip('http://localhost:5999/#token=x')
+    === 'http://localhost:5999/?kimi_onboarded=1#token=x',
+    'onboarding skip: works on localhost URLs too');
+  ok(webSession.isAllowedWebUrl(webSession.withOnboardingSkip('http://127.0.0.1:58627/#token=x')),
+    'onboarding skip: the decorated URL still passes the webview guard');
+
+  // The guest preload seeds the UI's color scheme from the app theme and must
+  // never contain anything beyond that bridge read + the two storage writes.
+  const guest = require('fs').readFileSync(path.join(__dirname, '..', 'src', 'web-guest-preload.js'), 'utf8');
+  ok(guest.includes("kimi-web.color-scheme") && guest.includes("kimi-web.onboarded"),
+    'guest preload: seeds color-scheme + onboarded');
+  ok(!/require\(['"](?!electron)['"][^'"]+['"]\)/.test(guest),
+    'guest preload: requires nothing but the electron bridge');
+  ok(!/nodeIntegration|contextBridge|fs\./.test(guest),
+    'guest preload: no node access beyond the bridge');
+
   ok(webSession.isAllowedWebUrl('http://127.0.0.1:58627/#token=x'), 'url guard: loopback + token passes');
   ok(webSession.isAllowedWebUrl('http://localhost:58627/#token=x'), 'url guard: localhost passes');
   ok(!webSession.isAllowedWebUrl('http://10.0.0.5:58627/#token=x'), 'url guard: LAN addresses are refused');

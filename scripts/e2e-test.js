@@ -556,7 +556,9 @@ async function main() {
   await waitFor(async () => await evalJS(`window.__kcdChatTab && window.__kcdChatTab.webview`), 'chat tab with a webview');
   ok(true, 'a chat session embeds a webview in its pane');
   const chatSrc = await evalJS(`window.__kcdChatTab.webview.getAttribute('src')`);
-  ok(/^http:\/\/127\.0\.0\.1:\d+\/#token=.+/.test(chatSrc), 'the webview loads the CLI\'s loopback URL with a token', chatSrc);
+  // The app appends the UI's official onboarding skip (?kimi_onboarded=1)
+  // before the #token fragment, so the chat opens straight into the workspace.
+  ok(/^http:\/\/127\.0\.0\.1:\d+\/\?kimi_onboarded=1#token=.+/.test(chatSrc), 'the webview loads the CLI\'s loopback URL with a token (and the onboarding skip)', chatSrc);
   ok(await evalJS(`window.__kcdChatTab.view`) === 'chat', 'the tab starts in chat view');
   ok(await evalJS(`!!window.__kcdChatTab.pane.querySelector('.view-switch')`), 'the Chat ⇄ Terminal switch is present');
   await waitFor(async () => (await evalJS(`document.querySelectorAll('.pane-loader').length`)) === 0,
@@ -578,7 +580,7 @@ async function main() {
   await evalJS(`document.querySelector('.term-pane[data-tab="' + window.__kcdChatTab.id + '"] .vs-btn[data-view="chat"]').click(); 1`);
   await waitFor(async () => (await evalJS(`window.__kcdChatTab.view`)) === 'chat', 'view switch back to chat');
   const chatSrc2 = await evalJS(`window.__kcdChatTab.webview.getAttribute('src')`);
-  ok(/^http:\/\/127\.0\.0\.1:\d+\/#token=.+/.test(chatSrc2), 'switching back to Chat restarts the web server', chatSrc2);
+  ok(/^http:\/\/127\.0\.0\.1:\d+\/\?kimi_onboarded=1#token=.+/.test(chatSrc2), 'switching back to Chat restarts the web server', chatSrc2);
 
   // The chat tab closes its backend cleanly.
   await evalJS(`__kcd.closeTab(window.__kcdChatTab)`);

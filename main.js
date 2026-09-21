@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -300,6 +300,10 @@ function createWindow() {
       webPreferences.contextIsolation = true;
       webPreferences.sandbox = true;
       webPreferences.nodeIntegrationInSubFrames = false;
+      // Runs inside the Kimi web UI BEFORE its scripts: seeds the UI's own
+      // color-scheme from the desktop app theme, so the chat opens in the
+      // user's theme and the UI's own appearance step never fights the app.
+      webPreferences.preload = path.join(__dirname, 'src', 'web-guest-preload.js');
     });
     if (contents.getType() === 'webview') {
       contents.setWindowOpenHandler(({ url }) => {
@@ -662,6 +666,14 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:get', () => settings);
+
+  // Asked by the chat webview's guest preload (synchronously, before the Kimi
+  // web UI paints) so the embedded UI starts in the SAME appearance the user
+  // picked for the desktop app — its own theme selection is then skipped
+  // because the value it persists is already correct.
+  ipcMain.on('webui:get-appearance', (e) => {
+    e.returnValue = { colorScheme: settings.theme === 'light' ? 'light' : 'dark' };
+  });
 
   ipcMain.handle('settings:set', (_e, patch) => {
     settings = { ...settings, ...settingsStore.sanitizePatch(patch) };

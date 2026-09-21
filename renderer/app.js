@@ -1038,10 +1038,12 @@ function createTab({ id, label, kind, web, url }) {
   if (web && url) {
     webview = document.createElement('webview');
     webview.setAttribute('src', url);
-    // persist: keeps kimi's UI preferences (theme, etc.) across sessions of
-    // the app; the main process validates the src against its loopback guard.
+    // persist: keeps kimi's UI preferences across sessions of the app; the
+    // main process validates the src against its loopback guard. The guest
+    // preload (src/web-guest-preload.js) seeds the UI's color-scheme from the
+    // desktop app theme, so its own theme step starts pre-answered.
     webview.setAttribute('partition', 'persist:kimiweb');
-    webview.style.display = 'none';
+    webview.style.visibility = 'hidden';
     pane.appendChild(webview);
   }
 
@@ -1058,6 +1060,8 @@ function createTab({ id, label, kind, web, url }) {
     webview.addEventListener('dom-ready', () => {
       if (tab.view === 'chat') {
         clearPaneLoader(tab); // the chat UI is alive
+        syncWebviewSize(tab);
+        webview.classList.add('webview-live');
         try { webview.focus(); } catch { /* not focusable yet */ }
       }
     });
@@ -1111,6 +1115,7 @@ function createTab({ id, label, kind, web, url }) {
 
   const ro = new ResizeObserver(debounce(() => {
     try { fit.fit(); sendResize(tab); } catch { /* hidden */ }
+    syncWebviewSize(tab); // the chat guest must follow the pane's pixels
   }, 80));
   ro.observe(pane);
   tab.ro = ro;
@@ -1242,6 +1247,19 @@ function createTab({ id, label, kind, web, url }) {
 // other one — the conversation never forks, only its face changes.
 // ---------------------------------------------------------------------------
 
+// Electron's <webview> does not track its element's box automatically in all
+// directions — pin the guest's explicit size to the pane's current pixels so
+// the chat UI always fills the window exactly ("the whole desktop app").
+function syncWebviewSize(tab) {
+  const wv = tab && tab.webview;
+  if (!wv) return;
+  const r = tab.pane.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width));
+  const h = Math.max(1, Math.round(r.height));
+  if (wv.style.width !== `${w}px`) wv.style.width = `${w}px`;
+  if (wv.style.height !== `${h}px`) wv.style.height = `${h}px`;
+}
+
 // The chat view is the app's face, not a card inside it: while a chat tab is
 // on stage the terminal-host card is dissolved and the web UI runs edge to
 // edge (body.chat-active in styles.css). Recomputed on every activation and
@@ -1253,7 +1271,15 @@ function applyChatActive() {
 
 function applyTabView(tab) {
   const chat = tab.view === 'chat' && tab.webview;
-  if (tab.webview) tab.webview.style.display = chat ? 'block' : 'none';
+  // NEVER display:none a webview: Electron attaches the guest web contents at
+  // the element's size at navigation time, and a hidden webview attaches at
+  // 0x0 — showing it later leaves a black rectangle that never recovers (the
+  // guest believes the window is that small). visibility is invisible to the
+  // user but keeps the element laid out, so the guest always has a real size.
+  if (tab.webview) {
+    tab.webview.classList.toggle('webview-live', chat);
+    if (chat) syncWebviewSize(tab);
+  }
   if (tab.term.element) tab.term.element.style.display = chat ? 'none' : 'block';
   if (tab.viewSwitch) {
     tab.viewSwitch.classList.toggle('on-chat', chat);
@@ -1290,7 +1316,7 @@ async function setTabView(tab, view) {
       tab.webview = document.createElement('webview');
       tab.webview.setAttribute('src', res.url);
       tab.webview.setAttribute('partition', 'persist:kimiweb');
-      tab.webview.style.display = 'none';
+      tab.webview.style.visibility = 'hidden';
       tab.pane.appendChild(tab.webview);
       wireWebview(tab);
       state.webServers.set(tab.id, tab.webview);
@@ -1985,6 +2011,22 @@ function applyThemeValue(value) {
   for (const t of state.tabs.values()) {
     t.term.options.theme = terminalTheme(theme);
   }
+  // Live theme propagation into the embedded Kimi chat UI: it re-reads the
+  // persisted color-scheme on each page load, so updating localStorage makes
+  // every open (or later restored) chat follow the app theme. New tabs pick
+  // the value up through the guest preload before their first paint.
+  try {
+    for (const wv of state.webServers.values()) {
+      if (!wv) continue;
+      try {
+        wv.executeJavaScript(
+          `try{localStorage.setItem('kimi-web.color-scheme','${theme}');` +
+          `document.documentElement.dataset.colorScheme='${theme}';}catch(e){}`,
+          true,
+        );
+      } catch { /* guest busy or gone — next load picks it up */ }
+    }
+  } catch { /* webview API unavailable */ }
 }
 
 function applyTheme() {
