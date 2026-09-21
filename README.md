@@ -41,7 +41,9 @@ It does **not** reimplement the agent through an API — it runs the *real* `kim
 - **Session actions** — resume · fork into a new session (`kimi fork`) · export as ZIP (`kimi export`) · copy session ID.
 - **Quick tasks** — run one-shot prompts non-interactively (`kimi -p "…"`) without opening a full session.
 - **In-app sign-in** — the device-code flow runs in a session tab and the sign-in page opens in your browser automatically.
-- **WSL support (Windows)** — detects a `kimi` CLI installed inside a WSL distro, runs it through `wsl.exe` with a proper TTY, and reads its session history over the WSL filesystem.
+- **WSL support (Windows)** — detects a `kimi` CLI installed inside a WSL distro, runs it through `wsl.exe` with a proper TTY, and reads its session history over the WSL filesystem. Sessions remember which side they were created on: resuming routes each one to its own environment automatically, and WSL tabs wear a **WSL** badge.
+- **Attachments** — drag files (or whole folders) onto a session, paste an image, or paste a copied file path: the path is written into the session so kimi can read it. Dragged images that have no file on disk are saved to a temp file and attached by path.
+- **"Copied" feedback** — every copy from the app (selection, session ID, links) confirms itself with a small chip at the bottom of the status bar.
 - **config.toml editor** — the first Settings tab loads `<KIMI_CODE_HOME>/config.toml` and writes it back with `Ctrl+S`.
 - **Dark & light theme**, custom title bar, resizable sidebar, find-in-terminal, clickable links, font zoom — the details that make a terminal app feel native.
 
@@ -208,6 +210,8 @@ git push origin main v1.0.0
 - **Links or “Open sessions folder” do nothing (Linux/WSL)** — those buttons need a working OS opener. The app tries `xdg-open` (including `/usr/bin/xdg-open`, so a broken shim earlier on `PATH` can't shadow it), then `gio open`, then `sensible-browser`. If none of them can open the target it says so and copies the URL/path to your clipboard, rather than failing silently.
 - **Windows shell errors from the CLI** — install Git for Windows, or point `KIMI_SHELL_PATH` at your Git Bash if it's in a non-standard location.
 - **CLI lives inside WSL** — detected automatically. Session working directories must be Linux paths; the UI switches accordingly.
+- **Sessions from both worlds (Windows + WSL)** — resume is routed by the session's own recorded folder, not by whichever CLI was detected last: a session created inside WSL (`/home/…`) always runs through `wsl.exe` in its distro, a Windows session (`C:\…`) always runs the native CLI — no matter which mode the app is currently in. Tabs running inside WSL carry a small **WSL** badge, so you always know which side a session belongs to.
+- **The `EISDIR … watch \\wsl.localhost\…` error** — that message comes from the kimi CLI itself: Windows' file-watcher cannot watch a WSL network share, so the CLI's own watcher retries forever. It is noisy but harmless, and it does not come from this app (the app never watches folders). It only appears when a Windows-side kimi is pointed at WSL data — resuming WSL sessions is routed correctly, so sessions themselves are unaffected.
 - **Crash in a VM / RDP session with no GPU** — the app detects a machine with no usable GPU (GPU-less VM/container or a Windows Remote Desktop session) and relaunches itself with `--disable-gpu`; if you still hit it, start it with `--disable-gpu` yourself.
 
 ## 🤝 Contributing

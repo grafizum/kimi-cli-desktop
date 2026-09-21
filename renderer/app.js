@@ -761,6 +761,7 @@ async function forkSession(s) {
     argv: ['fork', s.id, '-y'],
     kind: 'fork',
     label,
+    viaWslHint: s.cwd && s.cwd.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(s.cwd),
   });
   if (tab) toast('Forking conversation — the copy lands in Previous sessions', 'ok');
 }
@@ -873,6 +874,96 @@ function clearPaneLoader(tab) {
   setTimeout(() => el.remove(), 300); // match the pl-out fade
 }
 
+// ---------------------------------------------------------------------------
+// Attachments — files dragged onto a session (or pasted) are handed to the
+// CLI by writing their path into the terminal, the same thing a drag from
+// Explorer does in a shell.
+// ---------------------------------------------------------------------------
+
+const DROP_ICON = '<svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.6v7.6M4.7 7 8 10.2 11.3 7"/><path d="M2.9 10.4v2.3a1.3 1.3 0 0 0 1.3 1.3h7.6a1.3 1.3 0 0 0 1.3-1.3v-2.3"/></svg>';
+
+function showDropOverlay(pane) {
+  if (pane.querySelector('.drop-overlay')) return;
+  const el = document.createElement('div');
+  el.className = 'drop-overlay';
+  el.innerHTML = `<div class="drop-card">${DROP_ICON}<span>Drop to attach — the file path is written into the session</span></div>`;
+  pane.appendChild(el);
+}
+
+function hideDropOverlay(pane) {
+  const el = pane.querySelector('.drop-overlay');
+  if (el) el.remove();
+}
+
+// Resolve a DataTransfer's items into attachment descriptors for the main
+// process: file paths where they are available, base64 payloads as fallback
+// (e.g. images dragged from a web page, which have no real path).
+async function dropFilesAsAttachments(tab, dataTransfer) {
+  if (!dataTransfer) return;
+  const files = [];
+  const items = [...(dataTransfer.items || [])];
+  const entries = items.map((it) => (typeof it.webkitGetAsEntry === 'function' ? it.webkitGetAsEntry() : null));
+  const plain = [...(dataTransfer.files || [])];
+
+  const pushBlob = (blob, nameHint) => new Promise((resolve) => {
+    if (!blob) return resolve();
+    const path = typeof api.getPathForFile === 'function' ? api.getPathForFile(blob) : '';
+    if (path) {
+      files.push({ path, name: blob.name || nameHint || '' });
+      return resolve();
+    }
+    // No path (browser-sourced image): fall back to base64; the main process
+    // writes it into a temp file the CLI can open.
+    const reader = new FileReader();
+    reader.onload = () => {
+      files.push({ base64: String(reader.result || '').split(',')[1] || '', mimeType: blob.type || 'application/octet-stream', name: blob.name || nameHint || '' });
+      resolve();
+    };
+    reader.onerror = () => resolve();
+    reader.readAsDataURL(blob);
+  });
+
+  // A dragged DIRECTORY carries no file path — expand one level so a folder
+  // of screenshots still attaches instead of failing silently.
+  const expandEntry = (entry) => new Promise((resolve) => {
+    if (!entry) return resolve();
+    if (entry.isFile) {
+      entry.file((f) => pushBlob(f, entry.name).then(resolve), () => resolve());
+      return;
+    }
+    if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const kids = [];
+      const readBatch = () => reader.readEntries(async (batch) => {
+        if (!batch.length) {
+          for (const k of kids) await expandEntry(k);
+          return resolve();
+        }
+        kids.push(...batch);
+        readBatch();
+      }, () => resolve());
+      readBatch();
+      return;
+    }
+    resolve();
+  });
+
+  if (entries.some(Boolean)) {
+    for (const entry of entries) await expandEntry(entry);
+  } else {
+    for (const f of plain) await pushBlob(f, f.name);
+  }
+
+  if (!files.length) return;
+  try {
+    const res = await api.writeAttachment(tab.id, files);
+    if (res && res.ok) toast(`Attached ${res.written} file${res.written === 1 ? '' : 's'} — path written into the session`, 'ok');
+    else toast((res && res.error) || 'Could not attach the dropped files.', 'error');
+  } catch {
+    toast('Could not attach the dropped files.', 'error');
+  }
+}
+
 function createTab({ id, label, kind }) {
   const kindIcon = ico(kind === 'resume' ? 'resume' : kind === 'fork' ? 'fork' : kind === 'quick' ? 'bolt' : kind === 'login' ? 'key' : 'dot');
 
@@ -958,11 +1049,58 @@ function createTab({ id, label, kind }) {
     if (isMac()) return;
     e.preventDefault();
     if (term.hasSelection()) {
-      api.copyText(term.getSelection());
+      copyToClipboard(term.getSelection());
       term.clearSelection();
     } else {
       pasteClipboard();
     }
+  });
+
+  // Drag & drop: files dropped on the pane become attachments — their path is
+  // written into the session so kimi can read them. webUtils.getPathForFile is
+  // the sandboxed renderer's only reliable way to a dropped file's real path.
+  let dragDepth = 0;
+  pane.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth += 1; showDropOverlay(pane); });
+  pane.addEventListener('dragover', (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+  pane.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) hideDropOverlay(pane);
+  });
+  pane.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    hideDropOverlay(pane);
+    await dropFilesAsAttachments(tab, e.dataTransfer);
+  });
+
+  // Paste: images on the clipboard become attachments too (saved to a temp
+  // file, path written into the session) when no text is present.
+  pane.addEventListener('paste', (e) => {
+    const dt = e.clipboardData;
+    if (!dt) return; // let the terminal handle plain-text paste
+    const imgs = [...(dt.items || [])].filter((it) => it.kind === 'file' && it.type.startsWith('image/'));
+    const hasText = (dt.getText('text/plain') || '').length > 0;
+    if (!imgs.length || hasText) return; // text paste (or text+image) stays text
+    e.preventDefault();
+    e.stopPropagation();
+    const files = [];
+    let pending = imgs.length;
+    imgs.forEach((it) => {
+      const blob = it.getAsFile();
+      if (!blob) { pending -= 1; return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        files.push({ base64: String(reader.result || '').split(',')[1] || '', mimeType: it.type });
+        pending -= 1;
+        if (pending === 0 && files.length) {
+          api.writeAttachment(tab.id, files)
+            .then((res) => { if (res && res.ok) toast('Image attached — path written into the session', 'ok'); })
+            .catch(() => toast('Could not attach the image.', 'error'));
+        }
+      };
+      reader.onerror = () => { pending -= 1; };
+      reader.readAsDataURL(blob);
+    });
   });
 
   try {
@@ -1025,7 +1163,7 @@ function customKeyHandler(tab, e) {
     if (tab.term.hasSelection()) {
       e.preventDefault();
       e.stopPropagation();
-      api.copyText(tab.term.getSelection());
+      copyToClipboard(tab.term.getSelection());
       return false;
     }
     return true; // no selection → let the terminal see Cmd+C
@@ -1036,7 +1174,8 @@ function customKeyHandler(tab, e) {
 function setTabLabel(tab, label) {
   tab.label = label || tab.label;
   tab.tabEl.querySelector('.tab-label').textContent = tab.label;
-  tab.tabEl.title = tab.label;
+  const wslBadge = tab.meta && tab.meta.viaWsl ? '  · WSL' : '';
+  tab.tabEl.title = `${tab.label}${wslBadge}`;
 }
 
 function activateTab(id) {
@@ -1046,7 +1185,10 @@ function activateTab(id) {
     t.tabEl.classList.toggle('active', active);
     t.pane.style.display = active ? 'block' : 'none';
     if (active) {
-      t.term.focus();
+      // Focus without stealing the mouse selection the user just made in the
+      // terminal (click a tab mid-selection must not deselect). Focus is only
+      // forced when the click came from the keyboard or the tab itself.
+      t.term.focus({ preventScroll: true });
       requestAnimationFrame(() => {
         try {
           t.fit.fit();
@@ -1185,6 +1327,7 @@ async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, com
   }
   const tab = createTab({ id: res.tabId, label: label || defaultLabel(kind, res), kind: kind || 'interactive' });
   tab.meta = res;
+  if (res.viaWsl || opts.viaWslHint) tab.tabEl.classList.add('in-wsl');
   return tab;
 }
 
@@ -1239,18 +1382,62 @@ function watchLoginUrl(tab, text) {
 
 function activeTab() { return state.tabs.get(state.activeTabId) || null; }
 
+// "Copied" confirmation: a small chip at the bottom of the status bar that
+// fades in on every successful copy and fades out again shortly after. One
+// shared timer, so rapid copies just extend the visible window.
+let copiedTimer = null;
+function showCopied() {
+  const chip = $('#status-copied');
+  if (!chip) return;
+  chip.classList.add('show');
+  if (copiedTimer) clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => {
+    chip.classList.remove('show');
+    copiedTimer = null;
+  }, 1400);
+}
+
+// Every copy the app performs funnels through here, so the chip (and later
+// behaviours, like attachments) have exactly one place to hook.
+function copyToClipboard(text) {
+  if (!text) return false;
+  api.copyText(text);
+  showCopied();
+  return true;
+}
+
 function copySelection() {
   const tab = activeTab();
   if (!tab) return;
   const sel = tab.term.getSelection();
-  if (sel) api.copyText(sel);
+  if (sel) copyToClipboard(sel);
+}
+
+// Text pasted from the clipboard may itself be a file path — e.g. the user
+// copied a file in Explorer ("Copy as path") or in a terminal. Turn it into an
+// attachment so kimi gets the same usable reference a drag & drop produces,
+// instead of a raw path string typed into the TUI input.
+function looksLikeFilePath(text) {
+  const t = String(text || '').trim().replace(/^&|^"|"$/g, '');
+  if (!t || t.includes('\n')) return false;
+  return /^[A-Za-z]:[\\\/][^\r\n]+$/.test(t) || /^\\\\[^\\]+\\/.test(t) || /^\/(home|Users|mnt|tmp|var|opt)\/[^\r\n]+$/.test(t);
 }
 
 function pasteClipboard() {
   const tab = activeTab();
   if (!tab) return;
   api.readText().then((text) => {
-    if (text) api.writeInput(tab.id, text);
+    if (!text) return;
+    if (looksLikeFilePath(text)) {
+      api.writeAttachment(tab.id, [{ path: text.trim() }])
+        .then((res) => {
+          if (res && res.ok) toast('Attached file from the clipboard', 'ok');
+          else api.writeInput(tab.id, text); // not a real file — paste as text
+        })
+        .catch(() => api.writeInput(tab.id, text));
+      return;
+    }
+    api.writeInput(tab.id, text);
   }).catch(() => { /* clipboard unavailable */ });
 }
 

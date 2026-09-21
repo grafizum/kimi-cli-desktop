@@ -749,6 +749,20 @@ body.resizing #sidebar { transition: none; }
 .tab .tab-status-badge { font-size: 10px; color: var(--text-faint); }
 .tab.exited { opacity: 0.7; }
 .tab.exited .tab-status-badge { color: var(--red); }
+/* Sessions that actually run inside WSL carry a small tag after their title,
+   so a Windows-mode user can see at a glance which side a tab belongs to. */
+.tab.in-wsl::after {
+  content: "WSL";
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--label-muted);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 2px;
+  flex: 0 0 auto;
+}
 
 .add-tab {
   appearance: none;
@@ -853,6 +867,11 @@ body:not(.term-classic) .terminal-host {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
 }
+/* Inside the framed card the terminal keeps NO extra padding of its own: the
+   card's border is the frame, so CLI output sits flush against it the way it
+   does in a real terminal pane — not floating in an inset box. FitAddon reads
+   this padding when measuring, so this must be a static override, not JS. */
+body:not(.term-classic) .terminal-host .xterm { padding: 10px 12px 12px; }
 /* The card is the divider now — extra hairlines on top of it just read as
    clutter, so the strip and status bar drop theirs while the card is in use. */
 body:not(.term-classic) #tabbar,
@@ -1051,6 +1070,53 @@ body:not(.term-classic) .tab.active {
   font-size: 11px;
 }
 #statusbar .spacer { flex: 1 1 auto; }
+
+/* "Copied" confirmation — a tiny chip at the bottom-right of the status bar
+   that fades in whenever text was copied from the app. role=status so screen
+   readers also learn the copy happened. */
+.status-copied {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+.status-copied .ico { width: 11px; height: 11px; }
+.status-copied.show { opacity: 1; transform: translateY(0); }
+
+/* Attachment drop target — a soft highlight over the terminal while files are
+   dragged over the window, and a toast-style chip explaining what happens. */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--terminal-bg) 82%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.drop-overlay .drop-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 12px 18px;
+  font-size: 12.5px;
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.drop-overlay .drop-card .ico { width: 15px; height: 15px; color: var(--text-dim); }
 
 /* ------------------------------------------------------------------ */
 /* Modals                                                              */

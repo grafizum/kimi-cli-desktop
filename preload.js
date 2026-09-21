@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('kimiDesktop', {
   // bootstrap / detection / settings
@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('kimiDesktop', {
   writeInput: (tabId, data) => ipcRenderer.send('session:write', { tabId, data }),
   resizeTerminal: (tabId, cols, rows) => ipcRenderer.send('session:resize', { tabId, cols, rows }),
   killSession: (tabId) => ipcRenderer.invoke('session:kill', tabId),
+  // Attachments: write file paths (or dropped images, saved to a temp file)
+  // into a session so the CLI can read them. See session:write-attachment.
+  writeAttachment: (tabId, files) => ipcRenderer.invoke('session:write-attachment', { tabId, files }),
 
   // Kimi CLI config.toml
   readConfig: () => ipcRenderer.invoke('config:read'),
@@ -48,6 +51,11 @@ contextBridge.exposeInMainWorld('kimiDesktop', {
   // clipboard (renderer clipboard API is unavailable on file:// pages)
   copyText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
   readText: () => ipcRenderer.invoke('clipboard:read-text'),
+  // Absolute path of a File object from a drag & drop (sandboxed renderers
+  // cannot reach file paths any other way). Returns '' when unavailable.
+  getPathForFile: (file) => {
+    try { return webUtils.getPathForFile(file); } catch { return ''; }
+  },
 
   // events
   onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m)),

@@ -227,6 +227,18 @@ function linuxToWindowsUnc(distro, linuxPath) {
   return `\\\\wsl.localhost\\${distro}\\${rel}`;
 }
 
+// Turn a Linux working directory into one Windows can stat through the UNC
+// mount. Used by the resume path: a session recorded inside WSL stores a
+// Linux cwd (/home/me/app), but this Windows process must decide whether that
+// folder still exists before kimi will resume — fs can only see it as
+// \\wsl.localhost\<distro>\home\me\app. Paths that are not Linux paths are
+// passed through untouched. Pure, so it can be unit-tested without WSL.
+function wslSafeCwd(distro, cwd) {
+  const p = String(cwd || '').trim();
+  if (!p || !p.startsWith('/')) return p;
+  return linuxToWindowsUnc(distro, p) || p;
+}
+
 // Probe one distro for a kimi binary. Returns null when not installed.
 async function probeWslDistro(distro, env, allowTestDouble = false) {
   // Multiline bash so the for-loop keeps valid `do` / `done` structure.
@@ -374,5 +386,5 @@ async function detect(opts = {}) {
 
 module.exports = {
   detect, probe, buildSpawn, expandHome, commonCandidates, isWindows, run,
-  detectWsl, wslDistros, wslExec, linuxToWindowsUnc, decodeWslOutput, isTestDouble,
+  detectWsl, wslDistros, wslExec, linuxToWindowsUnc, wslSafeCwd, decodeWslOutput, isTestDouble,
 };
