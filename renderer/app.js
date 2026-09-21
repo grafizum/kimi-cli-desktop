@@ -473,6 +473,22 @@ function renderStatusBar() {
   const homeText = genericPath(state.kimiHomeDisplay || state.kimiHome);
   $('#status-home').textContent = homeText;
   $('#status-home').title = homeText;
+  // Mismatch notice: a WSL session folder while a Windows kimi CLI is active.
+  // Spawning ignores that folder (its data is unreachable for the Windows CLI —
+  // this is what used to surface as the CLI's EISDIR watcher spam), so say so
+  // where the setting lives instead of failing silently.
+  const mismatch = state.kimi && state.kimi.found && !isWsl()
+    && typeof state.settings.kimiCodeHome === 'string'
+    && /^\\\\wsl/i.test(state.settings.kimiCodeHome.trim());
+  const chip = $('#status-mismatch');
+  if (chip) {
+    chip.classList.toggle('hidden', !mismatch);
+    if (mismatch) {
+      chip.title = 'The sessions folder points into WSL, but a Windows kimi CLI is active. ' +
+        'New sessions use the CLI\'s own Windows data folder. Point the folder at a Windows ' +
+        'path in Settings → Sessions (or remove the Windows kimi) to stop this notice.';
+    }
+  }
 }
 
 function renderWelcome(showMissing) {
@@ -2037,6 +2053,17 @@ function onGlobalKeydown(e) {
     toggleSidebar();
     return;
   }
+  // Windows/ Linux convention: Ctrl+C copies a terminal selection. With no
+  // selection the keys pass through untouched, so the TUI's interrupt (^C)
+  // keeps working — the same split every Windows terminal uses.
+  if (mod && !e.shiftKey && !e.altKey && key.toLowerCase() === 'c' && !isMac() && !typing) {
+    const tab = activeTab();
+    if (tab && tab.term.hasSelection()) {
+ e.preventDefault();
+      copySelection();
+      return;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2211,9 +2238,12 @@ function wireEvents() {
       toggleSearch();
     }
   });
-  $('#search-next').addEventListener('click', () => { const q = $('#search-input').value; if (q) activeTab()?.search.findNext(q); });
-  $('#search-prev').addEventListener('click', () => { const q = $('#search-input').value; if (q) activeTab()?.search.findPrevious(q); });
+  $('#search-next').addEventListener('click', () => { const f = $('#search-input').value; if (f) activeTab()?.search.findNext(f); });
+  $('#search-prev').addEventListener('click', () => { const f = $('#search-input').value; if (f) activeTab()?.search.findPrevious(f); });
   $('#search-close').addEventListener('click', toggleSearch);
+
+  // WSL-folder mismatch chip → straight to the setting that can fix it.
+  $('#status-mismatch').addEventListener('click', () => openSettingsModal('sessions'));
 
   window.addEventListener('keydown', onGlobalKeydown);
 }

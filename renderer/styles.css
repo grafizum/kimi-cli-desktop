@@ -866,6 +866,18 @@ body:not(.term-classic) .terminal-host {
   background: var(--terminal-bg);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
+  /* The card is the app's working surface: a quiet depth cue and a focus
+     response make it feel like a pane of the app rather than an embedded
+     widget. focus-within fires from xterm's hidden helper textarea, i.e.
+     exactly while the user is typing into the session. */
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18) inset;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+body:not(.term-classic) .terminal-host:focus-within {
+  border-color: var(--border-strong);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.18) inset,
+    0 0 0 1px var(--border-strong) inset;
 }
 /* Inside the framed card the terminal keeps NO extra padding of its own: the
    card's border is the frame, so CLI output sits flush against it the way it
@@ -1070,6 +1082,26 @@ body:not(.term-classic) .tab.active {
   font-size: 11px;
 }
 #statusbar .spacer { flex: 1 1 auto; }
+
+/* Mismatch notice: the session folder points into WSL while a Windows kimi is
+   active. A button, not a label — clicking it opens Settings → Sessions where
+   the folder can actually be fixed. */
+.status-mismatch {
+  appearance: none;
+  border: 1px solid var(--yellow);
+  background: transparent;
+  color: var(--yellow);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.12s;
+}
+.status-mismatch:hover { background: color-mix(in srgb, var(--yellow) 16%, transparent); }
+.status-mismatch.hidden { display: none; }
 
 /* "Copied" confirmation — a tiny chip at the bottom-right of the status bar
    that fades in whenever text was copied from the app. role=status so screen
