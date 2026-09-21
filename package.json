@@ -1,7 +1,7 @@
 {
   "name": "kimi-cli-desktop-web",
   "productName": "Kimi Code Desktop",
-  "version": "1.0.0-web.0",
+  "version": "1.0.0-web.1",
   "description": "Unofficial desktop shell that embeds the Kimi Code CLI's own web chat interface (`kimi web`) in a native window. Not affiliated with Moonshot AI.",
   "main": "main.js",
   "author": "Kimi Code Desktop contributors",
