@@ -1,12 +1,15 @@
-# The README's test contract, in CI:
-#   • smoke — dependency-free, runs anywhere (no npm install needed)
-#   • e2e   — drives a real Electron window with the fake kimi binary
-#             (Linux headless through xvfb, Windows on the session desktop)
+# CI for the WEB EDITION branch (kimi-web-desktop).
+#   • smoke — dependency-free contract checks (run anywhere, no npm install)
+#   • package — a real electron-builder --dir run per OS, proving the app
+#     actually packages (catches files missing from the "build.files" list)
+# The CLI edition (branch main) additionally drives a full Electron e2e;
+# this edition's runtime surface is one webview, covered by the live checks
+# in main.js and the smoke contracts here.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [kimi-web-desktop]
   pull_request:
 
 jobs:
@@ -26,26 +29,32 @@ jobs:
       # dependencies, so it also proves a fresh clone can be checked quickly.
       - run: node scripts/smoke-test.js
 
-  e2e:
+  package:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            run: xvfb-run -a node scripts/e2e-test.js
           - os: windows-latest
-            run: node scripts/e2e-test.js
+            script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
+          - os: macos-latest
+            script: dist:mac
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      # xvfb is not preinstalled on ubuntu-latest; electron needs a display.
-      - name: Install xvfb (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -y && sudo apt-get install -y xvfb
       - run: npm ci
-      - run: ${{ matrix.run }}
+      # --dir packs the app without producing installers: fast, and it proves
+      # the "files" globs include everything main.js needs at runtime.
+      - run: npm run ${{ matrix.script }} -- --dir --publish never
+      - name: The packed app exists
+        shell: bash
+        run: |
+          found=$(find dist -maxdepth 2 \( -name "*.exe" -o -name "kimi-code-desktop" -o -name "*.app" \) | head -5)
+          echo "$found"
+          [ -n "$found" ] || { echo "::error::electron-builder produced no app"; exit 1; }

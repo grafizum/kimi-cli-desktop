@@ -1,13 +1,22 @@
-# Release pipeline — the README's "Releasing" section in action:
-#   git tag v1.0.0 && git push origin v1.0.0
+# Release pipeline:
+#   git tag v1.2.3      && git push origin v1.2.3      -> CLI edition (branch main)
+#   git tag web-v1.0.0  && git push origin web-v1.0.0  -> Web edition (branch kimi-web-desktop)
 # builds the installers on all three OSes and attaches them to the release,
 # which is exactly what install.ps1 / install.sh then download for users.
 #
+# This file lives on BOTH branches and dispatches on the tag prefix:
+#   v*      -> the CLI edition (tabs + TUI), artifacts  Kimi-Code-Desktop-*
+#   web-v*  -> the Web edition (embedded `kimi web`),   Kimi-Code-Desktop-Web-*
+# The two editions never share a release, so `releases/latest` (what the
+# install scripts resolve) always points at the most recent tag of either
+# edition — publish them alternately with care.
+#
 # Artifact names come from package.json "build" (electron-builder):
-#   Kimi-Code-Desktop-<version>-x64-portable.exe   (Windows)
-#   Kimi-Code-Desktop-Setup-<version>-x64.exe      (Windows NSIS)
-#   Kimi-Code-Desktop-<version>-<arch>.AppImage    (Linux x64 + arm64)
-#   Kimi-Code-Desktop-<version>-<arch>.dmg         (macOS x64 + arm64)
+#   Kimi-Code-Desktop-<version>-x64-portable.exe       (Windows, CLI edition)
+#   Kimi-Code-Desktop-Setup-<version>-x64.exe          (Windows NSIS, CLI edition)
+#   Kimi-Code-Desktop-Web-<version>-x64-portable.exe   (Windows, Web edition)
+#   Kimi-Code-Desktop-Web-Setup-<version>-x64.exe      (Windows NSIS, Web edition)
+#   …-<version>-<arch>.AppImage / .dmg                 (Linux / macOS)
 # The installers match on "portable.exe", ".AppImage" / ".dmg" + arch — keep
 # the artifactName patterns in package.json stable or update the scripts.
 
@@ -15,7 +24,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "web-v*"]
 
 permissions:
   contents: write # create the release, upload assets
@@ -36,6 +45,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Build the branch the TAG points at, not whatever the checkout
+          # defaults to — a web-v* tag must build the kimi-web-desktop code.
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -73,7 +86,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: Kimi Code Desktop ${{ github.ref_name }}
+          name: Kimi Code Desktop ${{ startsWith(github.ref_name, 'web-') && '(Web edition)' || '' }} ${{ github.ref_name }}
           generate_release_notes: true
           # Never a draft or GitHub "pre-release": releases/latest — the URL
           # the README links to and the API both installers resolve — ignores

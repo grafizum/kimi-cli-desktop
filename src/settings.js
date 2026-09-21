@@ -2,6 +2,9 @@
 
 // Tiny JSON-file settings store for app preferences. Pure Node module.
 // Data lives at <userData>/settings.json (userData comes from Electron).
+//
+// WEB EDITION: the embedded Kimi web UI carries its own settings; the shell
+// only needs to know where the CLI is and which appearance to hand it.
 
 const fs = require('fs');
 const path = require('path');
@@ -9,19 +12,8 @@ const path = require('path');
 const DEFAULTS = {
   kimiPath: '', // explicit path to the kimi binary (empty = auto-detect)
   kimiCodeHome: '', // KIMI_CODE_HOME override (empty = ~/.kimi-code)
-  defaultCwd: '', // working directory for new sessions (empty = home)
-  defaultMode: 'default', // default | plan | yolo | auto
-  fontSize: 13,
-  fontFamily: '', // empty = app default stack
-  theme: 'dark', // dark | light
-  scrollback: 10000,
-  shellPath: '', // KIMI_SHELL_PATH (Windows Git Bash override)
-  sidebarWidth: 292, // px width of the session-history sidebar
-  sidebarCollapsed: false, // true = sidebar hidden entirely
-  sessionGroupBy: 'project', // 'project' (folder) | 'date'
-  terminalStyle: 'panel', // 'panel' (framed card) | 'classic' (edge-to-edge)
-  sessionView: 'chat', // 'chat' (embedded Kimi Web) | 'terminal' (the PTY TUI)
-  collapsedGroups: [], // group keys the user folded shut, restored on next launch
+  defaultMode: 'default', // default | plan | yolo | auto — server start mode
+  theme: 'dark', // dark | light — seeded into the chat UI's color scheme
 };
 
 function load(dir) {
@@ -55,8 +47,7 @@ function sanitizePatch(patch) {
   const out = {};
   for (const [k, v] of Object.entries(patch || {})) {
     if (!(k in DEFAULTS)) continue;
-    if (typeof v === 'string' && k !== 'defaultMode' && k !== 'theme' && k !== 'fontFamily'
-      && k !== 'sessionView' && k !== 'terminalStyle') {
+    if (typeof v === 'string' && k !== 'defaultMode' && k !== 'theme') {
       out[k] = v.trim();
     } else {
       out[k] = v;

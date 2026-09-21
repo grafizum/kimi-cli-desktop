@@ -1,383 +1,86 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!-- style-src needs 'unsafe-inline': Electron's <webview> element applies
+       internal inline styles while injecting/sizing its guest frame, and a
+       strict style-src blocks that — the webview then never renders. Scripts
+       stay locked to 'self'. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'" />
   <title>Kimi Code Desktop</title>
-  <!-- xterm ships its layout/measurement CSS separately from its JS. Without it
-       .xterm-helpers stays in normal flow and .xterm-char-measure-element never
-       gets hidden, so xterm's glyph-measuring scratch text paints as a bar of
-       stray characters across the top of every session. -->
-  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../assets/fonts.css" />
 </head>
-<body>
-  <!-- Splash: covers the raw window until the first terminal has painted, so
-       xterm/PTY start-up flicker is never visible. Removed in app.js. -->
-  <div id="splash" role="status" aria-label="Loading Kimi Code Desktop">
-    <div class="splash-box">
-      <svg class="splash-logo" viewBox="0 0 200 200" width="72" height="72" aria-hidden="true">
-        <defs>
-          <radialGradient id="spGlow" gradientUnits="userSpaceOnUse" cx="60" cy="30" r="180">
-            <stop offset="0" stop-color="#111214" />
-            <stop offset="1" stop-color="#000000" />
-          </radialGradient>
-          <linearGradient id="spK" gradientUnits="userSpaceOnUse" x1="52" y1="47" x2="153" y2="148">
-            <stop offset="0" stop-color="#9ca3af" />
-            <stop offset="1" stop-color="#e5e7eb" />
-          </linearGradient>
-        </defs>
-        <rect width="200" height="200" rx="42" fill="url(#spGlow)" />
-        <g fill="url(#spK)">
-          <path d="M52 48H82V152H52Z" />
-          <path d="M87.72 110.86L147.72 72.86L132.28 47.14L72.28 85.14Z" />
-          <path d="M71.97 114.67L131.97 152.67L148.03 127.33L88.03 89.33Z" />
-        </g>
-      </svg>
-      <div class="splash-word">Kimi Code Desktop</div>
-      <div class="splash-bar"><span></span></div>
+<body data-theme="dark">
+  <!-- Custom title bar (Windows/Linux; macOS draws its own). Pure chrome:
+       window controls + brand, nothing else — the UI below is kimi's own. -->
+  <header id="titlebar">
+    <div class="tb-drag">
+      <span class="tb-brand">
+        <img src="../assets/icon.png" alt="" class="tb-icon" />
+        <span>Kimi Code Desktop</span>
+        <span id="tb-badge" class="tb-badge" hidden></span>
+      </span>
     </div>
-  </div>
-  <!-- Test-harness banner: only present when the window runs against the e2e
-       fake CLI (document.title carries the [TEST RUN] suffix set by main.js).
-       A leftover, interrupted test window can then never be mistaken for the
-       real app — and e2e asserts the banner exists. -->
-  <div id="test-banner" class="test-banner hidden" role="status">TEST RUN — this window drives a fake kimi CLI and is not your app</div>
-  <div id="app">
-    <header id="topbar">
-      <button id="btn-toggle-sidebar" class="icon-btn titlebar-btn" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar" aria-pressed="false">
-        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-          <rect x="1.4" y="2.4" width="13.2" height="11.2" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.25" />
-          <line x1="6.3" y1="2.6" x2="6.3" y2="13.4" stroke="currentColor" stroke-width="1.25" />
-          <rect x="2.6" y="4.4" width="2.4" height="1.5" rx="0.75" fill="currentColor" opacity=".65" />
-          <rect x="2.6" y="7.2" width="2.4" height="1.5" rx="0.75" fill="currentColor" opacity=".65" />
-        </svg>
-      </button>
-      <div class="brand">
-        <svg class="logo" viewBox="0 0 200 200" width="18" height="18" aria-hidden="true">
-          <defs>
-            <radialGradient id="lgGlow" gradientUnits="userSpaceOnUse" cx="60" cy="30" r="180">
-              <stop offset="0" stop-color="#111214" />
-              <stop offset="1" stop-color="#000000" />
-            </radialGradient>
-            <linearGradient id="lgK" gradientUnits="userSpaceOnUse" x1="52" y1="47" x2="153" y2="148">
-              <stop offset="0" stop-color="#9ca3af" />
-              <stop offset="1" stop-color="#e5e7eb" />
-            </linearGradient>
-          </defs>
-          <rect width="200" height="200" rx="42" fill="url(#lgGlow)" />
-          <g fill="url(#lgK)">
-            <path d="M52 48H82V152H52Z" />
-            <path d="M87.72 110.86L147.72 72.86L132.28 47.14L72.28 85.14Z" />
-            <path d="M71.97 114.67L131.97 152.67L148.03 127.33L88.03 89.33Z" />
-          </g>
-        </svg>
-        <span class="brand-name">Kimi Code Desktop</span>
-      </div>
-      <div class="topbar-actions">
-        <button id="btn-quick-task" class="btn ghost" title="Run a one-shot task without opening the interactive session (kimi -p)">
-          <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M9.3 2 4.8 8.6h3l-.7 5.4 5.1-7.2H8.9z" fill="currentColor" stroke="none"/></svg>
-          Quick task
-        </button>
-        <button id="btn-new-session" class="btn primary" title="Start an interactive Kimi Code session (Ctrl+T)">
-          <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.6v8.8M3.6 8h8.8"/></svg>
-          New session
-        </button>
-      </div>
-      <div id="window-controls" class="window-controls">
-        <button id="win-min" class="win-btn" title="Minimize" aria-label="Minimize">
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1.2" /></svg>
-        </button>
-        <button id="win-max" class="win-btn" title="Maximize" aria-label="Maximize">
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
-        </button>
-        <button id="win-close" class="win-btn close" title="Close" aria-label="Close">
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.6 1.6l6.8 6.8M8.4 1.6l-6.8 6.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
-        </button>
-      </div>
-    </header>
-
-    <div id="main">
-      <aside id="sidebar">
-        <div class="sidebar-section">
-          <div class="sidebar-header">
-            <span class="sidebar-title">Previous sessions</span>
-            <span class="sidebar-header-actions">
-              <button id="btn-refresh-sessions" class="icon-btn" title="Refresh session history" aria-label="Refresh session history">
-                <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M13.7 10a6 6 0 1 1-1.4-6.2L15.3 6.7"/><path d="M15.3 2.7v4h-4"/></svg>
-              </button>
-            </span>
-          </div>
-          <input id="session-filter" type="search" placeholder="Search sessions…" autocomplete="off" spellcheck="false" />
-          <div id="session-list" class="session-list"></div>
-        </div>
-        <div class="sidebar-footer">
-          <div id="kimi-status" class="kimi-status">
-            <button id="btn-settings" class="icon-btn gear-btn" title="Settings — config.toml, appearance, sessions, CLI, account" aria-label="Settings">
-              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-                <path d="M8 10.1a2.1 2.1 0 100-4.2 2.1 2.1 0 000 4.2z" fill="none" stroke="currentColor" stroke-width="1.25" />
-                <path d="M13.1 9.6a1 1 0 00.2 1.1l.04.04a1.2 1.2 0 11-1.7 1.7l-.04-.04a1 1 0 00-1.1-.2 1 1 0 00-.6.9v.1a1.2 1.2 0 11-2.4 0v-.06a1 1 0 00-.65-.9 1 1 0 00-1.1.2l-.04.04a1.2 1.2 0 11-1.7-1.7l.04-.04a1 1 0 00.2-1.1 1 1 0 00-.9-.6h-.1a1.2 1.2 0 110-2.4h.06a1 1 0 00.9-.65 1 1 0 00-.2-1.1l-.04-.04a1.2 1.2 0 111.7-1.7l.04.04a1 1 0 001.1.2h.05a1 1 0 00.6-.9v-.1a1.2 1.2 0 112.4 0v.06a1 1 0 00.6.9 1 1 0 001.1-.2l.04-.04a1.2 1.2 0 111.7 1.7l-.04.04a1 1 0 00-.2 1.1v.05a1 1 0 00.9.6h.1a1.2 1.2 0 110 2.4h-.06a1 1 0 00-.9.6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" />
-              </svg>
-            </button>
-            <span id="kimi-status-dot" class="status-dot"></span>
-            <span id="kimi-status-text" class="status-text">Detecting Kimi Code CLI…</span>
-          </div>
-        </div>
-      </aside>
-
-      <div id="sidebar-splitter" class="splitter" role="separator" aria-orientation="vertical"
-           tabindex="0" title="Drag to resize · double-click to reset"></div>
-
-      <section id="workspace">
-        <div id="tabbar">
-          <div id="tabs" class="tabs"></div>
-          <button id="btn-add-tab" class="add-tab" title="New session (Ctrl+T)" aria-label="New session">
-            <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.6v8.8M3.6 8h8.8"/></svg>
-          </button>
-        </div>
-        <div id="terminal-stage">
-          <div id="welcome" class="welcome hidden"></div>
-          <div id="terminal-host" class="terminal-host"></div>
-        </div>
-        <div id="searchbar" class="searchbar hidden">
-          <input id="search-input" type="search" placeholder="Find in terminal…" autocomplete="off" spellcheck="false" />
-          <span id="search-count" class="search-count"></span>
-          <button id="search-prev" class="icon-btn" title="Previous match (Shift+Enter)" aria-label="Previous match">
-            <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.7V3.3M4.3 7 8 3.3 11.7 7"/></svg>
-          </button>
-          <button id="search-next" class="icon-btn" title="Next match (Enter)" aria-label="Next match">
-            <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.3v9.4M4.3 9 8 12.7 11.7 9"/></svg>
-          </button>
-          <button id="search-close" class="icon-btn" title="Close (Esc)" aria-label="Close search">
-            <svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 4 12M4 4l8 8"/></svg>
-          </button>
-        </div>
-        <footer id="statusbar">
-          <span id="status-kimi" class="status-item" title="Detected Kimi Code CLI binary"></span>
-          <span class="sep">·</span>
-          <span id="status-home" class="status-item" title="Kimi Code CLI data directory"></span>
-          <span class="spacer"></span>
-          <span id="status-copied" class="status-copied" role="status" aria-live="polite">
-            <svg class="ico" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.3 4.1 6.2 11.2 2.7 7.7"/></svg>
-            Copied
-          </span>
-        </footer>
-      </section>
+    <div class="tb-controls">
+      <button id="win-min" class="tb-btn" title="Minimize" aria-label="Minimize">&#x2500;</button>
+      <button id="win-max" class="tb-btn" title="Maximize" aria-label="Maximize">&#x25A1;</button>
+      <button id="win-close" class="tb-btn tb-close" title="Close" aria-label="Close">&#x2715;</button>
     </div>
-  </div>
+  </header>
 
-  <!-- New session modal -->
-  <div id="modal-new-session" class="modal-backdrop hidden">
-    <div class="modal">
-      <h2>New Kimi Code session</h2>
-      <label class="field">
-        <span id="ns-cwd-label" class="field-label">Working directory</span>
-        <span class="field-row">
-          <input id="ns-cwd" type="text" placeholder="Select a folder…" spellcheck="false" />
-          <button id="ns-browse" class="btn ghost">Browse…</button>
-        </span>
-      </label>
-      <div class="field">
-        <span class="field-label">Permission mode</span>
-        <div id="ns-modes" class="mode-grid">
-          <label class="mode-card"><input type="radio" name="ns-mode" value="default" checked />
-            <span class="mode-name">Default</span><span class="mode-desc">Asks before risky actions</span></label>
-          <label class="mode-card"><input type="radio" name="ns-mode" value="plan" />
-            <span class="mode-name">Plan</span><span class="mode-desc">Read-only exploration &amp; planning</span></label>
-          <label class="mode-card"><input type="radio" name="ns-mode" value="yolo" />
-            <span class="mode-name">Yolo</span><span class="mode-desc">Asks when needed (routine runs auto)</span></label>
-          <label class="mode-card"><input type="radio" name="ns-mode" value="auto" />
-            <span class="mode-name">Auto</span><span class="mode-desc">Never asks — full autonomy</span></label>
-        </div>
+  <!-- The whole face of the app: the CLI's own web UI, edge to edge. -->
+  <main id="stage">
+    <!-- 1. No CLI: what we show until `kimi` exists on this machine. -->
+    <section id="no-kimi" class="state-card" hidden>
+      <img src="../assets/icon.png" alt="" class="state-icon" />
+      <h1>Kimi Code CLI not found</h1>
+      <p>
+        This app is a desktop window around the <strong>Kimi Code CLI</strong>'s own
+        chat interface. Install the CLI once and the app lights up by itself —
+        no restart needed.
+      </p>
+      <pre class="state-cmd" id="install-cmd">npm install -g kimi-code</pre>
+      <div class="state-actions">
+        <button id="btn-copy-cmd" class="btn ghost">Copy install command</button>
+        <button id="btn-recheck" class="btn">Check again</button>
       </div>
-      <div class="modal-actions">
-        <button id="ns-cancel" class="btn ghost">Cancel</button>
-        <button id="ns-start" class="btn primary">Start session</button>
-      </div>
-    </div>
-  </div>
+      <p class="state-hint" id="detect-hint"></p>
+    </section>
 
-  <!-- Quick task modal -->
-  <div id="modal-quick-task" class="modal-backdrop hidden">
-    <div class="modal">
-      <h2>Quick task</h2>
-      <p class="modal-hint">Runs non-interactively (<code>kimi -p "…"</code>) — the agent streams its reasoning and result, no approval prompts. Great for one-shot questions and small jobs.</p>
-      <label class="field">
-        <span class="field-label">Prompt</span>
-        <textarea id="qt-prompt" rows="4" placeholder="e.g. Summarize this project's directory structure and point out the entry points."></textarea>
-      </label>
-      <label class="field">
-        <span id="qt-cwd-label" class="field-label">Working directory</span>
-        <span class="field-row">
-          <input id="qt-cwd" type="text" placeholder="Select a folder…" spellcheck="false" />
-          <button id="qt-browse" class="btn ghost">Browse…</button>
-        </span>
-      </label>
-      <div class="modal-actions">
-        <button id="qt-cancel" class="btn ghost">Cancel</button>
-        <button id="qt-run" class="btn primary">Run task</button>
-      </div>
-    </div>
-  </div>
+    <!-- 2. Starting the chat server. -->
+    <section id="starting" class="state-card" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>Starting Kimi chat…</h1>
+      <p class="state-hint" id="starting-detail">Launching the CLI's web interface on localhost.</p>
+    </section>
 
-  <!-- Settings modal (tabbed: config.toml · Appearance · Sessions · Kimi CLI · Account) -->
-  <div id="modal-settings" class="modal-backdrop hidden">
-    <div class="modal modal-wide">
-      <h2>Settings</h2>
-      <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
-        <button class="settings-tab" role="tab" data-tab="config" aria-selected="true">config.toml</button>
-        <button class="settings-tab" role="tab" data-tab="appearance" aria-selected="false">Appearance</button>
-        <button class="settings-tab" role="tab" data-tab="sessions" aria-selected="false">Sessions</button>
-        <button class="settings-tab" role="tab" data-tab="cli" aria-selected="false">Kimi CLI</button>
-        <button class="settings-tab" role="tab" data-tab="account" aria-selected="false">Account</button>
+    <!-- 3. Server failed / crashed: retry in place. -->
+    <section id="error-state" class="state-card" hidden>
+      <h1>The chat could not start</h1>
+      <p class="state-error" id="error-detail"></p>
+      <div class="state-actions">
+        <button id="btn-retry" class="btn">Try again</button>
       </div>
-      <div id="settings-scroll" class="settings-scroll">
-        <div class="settings-panel" data-panel="config" role="tabpanel">
-          <p class="modal-hint">
-            <code>config.toml</code> is the file the <code>kimi</code> CLI reads at startup for models,
-            providers, permissions and tool settings. Edit it here, then start a new session to apply.
-          </p>
-          <div class="config-path">
-            <span class="config-path-label">File</span>
-            <code id="cfg-path">resolving…</code>
-          </div>
-          <textarea id="cfg-content" class="config-editor" spellcheck="false"
-            placeholder="# config.toml is empty — add your Kimi Code CLI settings here."></textarea>
-          <div id="cfg-status" class="config-status"></div>
-          <div class="config-actions">
-            <button id="cfg-template" class="btn ghost" title="Fill the editor with a commented starter config">Starter template</button>
-            <span class="spacer"></span>
-            <button id="cfg-reload" class="btn ghost" title="Discard changes and read config.toml from disk">Reload</button>
-            <button id="cfg-save" class="btn primary" title="Write config.toml to disk (Ctrl+S)">Save</button>
-          </div>
-        </div>
-        <div class="settings-panel hidden" data-panel="account" role="tabpanel">
-          <fieldset>
-            <legend>Kimi account</legend>
-            <p class="field-hint settings-note">
-              Sign in so the CLI can use your Kimi account's models. This opens a
-              <strong>“Sign in to Kimi”</strong> session tab, starts the device-code flow and
-              opens the Kimi sign-in page in your browser. If the page doesn't appear, paste
-              the URL and code shown in that tab.
-            </p>
-            <div class="field-row">
-              <button id="st-signin" class="btn primary">Sign in to Kimi…</button>
-              <span id="st-account-status" class="field-hint settings-inline-hint"></span>
-            </div>
-          </fieldset>
-        </div>
-        <fieldset data-panel="cli" class="hidden">
-          <legend>Kimi Code CLI</legend>
-          <label class="field">
-            <span class="field-label">Executable path</span>
-            <span class="field-row">
-              <input id="st-kimi-path" type="text" placeholder="Auto-detected" spellcheck="false" />
-              <button id="st-kimi-browse" class="btn ghost">Browse…</button>
-              <button id="st-kimi-detect" class="btn ghost">Re-detect</button>
-            </span>
-            <span id="st-kimi-version" class="field-hint"></span>
-            <span class="field-hint">Usually installed to:<br /><span id="st-kimi-candidates"></span></span>
-          </label>
-          <label class="field">
-            <span class="field-label">KIMI_SHELL_PATH (Windows: Git Bash)</span>
-            <input id="st-shell-path" type="text" placeholder="Optional — auto-detected Git Bash is used" spellcheck="false" />
-          </label>
-        </fieldset>
-        <fieldset data-panel="sessions" class="hidden">
-          <legend>Sessions</legend>
-          <label class="field">
-            <span class="field-label">Sessions folder (KIMI_CODE_HOME)</span>
-            <span class="field-row">
-              <input id="st-kimi-home" type="text" placeholder="Leave empty for ~/.kimi-code" spellcheck="false" />
-              <button id="st-kimi-home-browse" class="btn ghost">Browse…</button>
-            </span>
-            <span id="st-kimi-home-hint" class="field-hint">Where Kimi stores sessions, config and credentials. Changing this switches to a different session history.</span>
-          </label>
-          <label class="field">
-            <span id="st-cwd-label" class="field-label">Default working directory</span>
-            <span class="field-row">
-              <input id="st-default-cwd" type="text" placeholder="Your home folder" spellcheck="false" />
-              <button id="st-default-cwd-browse" class="btn ghost">Browse…</button>
-            </span>
-          </label>
-          <label class="field">
-            <span class="field-label">Permission mode for new sessions</span>
-            <select id="st-default-mode">
-              <option value="default">Default — ask before risky actions</option>
-              <option value="plan">Plan — read-only planning</option>
-              <option value="yolo">Yolo — ask when needed</option>
-              <option value="auto">Auto — never ask</option>
-            </select>
-          </label>
-        </fieldset>
-        <fieldset data-panel="appearance" class="hidden">
-          <legend>Appearance</legend>
-          <div class="field">
-            <span class="field-label">Theme</span>
-            <div class="theme-grid">
-              <label class="theme-card">
-                <input type="radio" name="st-theme" value="dark" />
-                <span class="theme-swatch dark" aria-hidden="true"></span>
-                <span class="theme-name">Dark</span>
-              </label>
-              <label class="theme-card">
-                <input type="radio" name="st-theme" value="light" />
-                <span class="theme-swatch light" aria-hidden="true"></span>
-                <span class="theme-name">Light</span>
-              </label>
-            </div>
-          </div>
-          <div class="field-row">
-            <label class="field grow">
-              <span class="field-label">Font size</span>
-              <input id="st-font-size" type="number" min="8" max="24" step="1" />
-            </label>
-            <label class="field grow">
-              <span class="field-label">Scrollback (lines)</span>
-              <input id="st-scrollback" type="number" min="1000" max="100000" step="1000" />
-            </label>
-          </div>
-          <label class="field">
-            <span class="field-label">Font family</span>
-            <input id="st-font-family" type="text" placeholder="Leave empty for the default stack" spellcheck="false" />
-          </label>
-          <label class="field">
-            <span class="field-label">Session view</span>
-            <select id="st-session-view">
-              <option value="chat">Chat — Kimi's own chat UI, embedded (new conversations)</option>
-              <option value="terminal">Terminal — the classic kimi TUI</option>
-            </select>
-            <span class="field-hint">What new and resumed sessions open as. Every tab can still switch between Chat and Terminal at any time.</span>
-          </label>
-          <label class="field">
-            <span class="field-label">Terminal panel</span>
-            <select id="st-term-style">
-              <option value="panel">Framed panel — matches the app chrome</option>
-              <option value="classic">Classic — terminal fills the window</option>
-            </select>
-            <span class="field-hint">Saved with “Apply changes”. Classic restores the plain edge-to-edge terminal.</span>
-          </label>
-        </fieldset>
-      </div>
-      <div class="modal-actions">
-        <span class="modal-actions-note">config.toml has its own Save button.</span>
-        <span class="spacer"></span>
-        <button id="st-cancel" class="btn ghost">Close</button>
-        <button id="st-save" class="btn primary">Apply changes</button>
-      </div>
-    </div>
-  </div>
+      <p class="state-hint">
+        If this keeps happening, update the CLI (<code>kimi update</code> or
+        <code>npm install -g kimi-code</code>) — the chat interface is served by the CLI itself.
+      </p>
+    </section>
 
-  <!-- Session row actions (resume · fork · export · copy id) -->
-  <div id="session-menu" class="ctx-menu hidden" role="menu"></div>
+    <!-- The live chat. Kept laid out at all times (visibility, never
+         display:none): Electron attaches the guest at the element's size at
+         navigation time, and a hidden webview attaches at 0x0 — the black
+         rectangle bug. JS syncs exact pixels on every resize on top. -->
+    <webview id="chat" hidden></webview>
+  </main>
 
-  <div id="toast-host" class="toast-host" role="status" aria-live="polite"></div>
+  <footer id="statusbar">
+    <span id="status-left">Kimi Code</span>
+    <span id="status-right"></span>
+  </footer>
 
-  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
-  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
-  <script src="../node_modules/@xterm/addon-search/lib/addon-search.js"></script>
-  <script src="../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
