@@ -48,22 +48,25 @@ Both editions can be installed side by side — they share only your `~/.kimi-co
 
 - **The Kimi Code CLI v2.0+** (`kimi`) installed and on `PATH` — [instructions](https://www.kimi.com/code/docs/en/). The app **detects it automatically**, including inside WSL on Windows; while it is missing the window shows the install hint and lights up the moment the CLI appears (no restart needed).
 
-## Install
+## Install — two different apps, pick yours
 
-Grab the newest `Web` assets from the [releases](https://github.com/grafizum/kimi-cli-desktop/releases) page (artifacts named `Kimi-Code-Desktop-Web-…`), or:
+This repo ships **two separate desktop apps** from two branches. They install side by side, have separate entries in your app list, and are downloaded with **different links** — pick the one you want:
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.ps1 | iex
-```
+| | **⬇ Download the Web edition** (this page) | **⬇ Download the CLI edition** (over there) |
+|---|---|---|
+| **You get** | a chat window — the kimi web UI fullscreen | a terminal app — tabs, sessions, TUI + chat |
+| **Windows (PowerShell)** | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.ps1 \| iex` | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.ps1 \| iex` |
+| **Linux / macOS (bash)** | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.sh \| bash` | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.sh \| bash` |
+| **Manual** | [Web-edition assets](https://github.com/grafizum/kimi-cli-desktop/releases) (`…-Web-…` files) | [CLI-edition releases](https://github.com/grafizum/kimi-cli-desktop/releases?q=v1&expanded=true) (`v1.x` tags) |
 
-**Linux / macOS (bash):**
+Each script resolves **only its own edition's assets** — a Web install can never pull the terminal app and vice versa.
+
+**Web edition from source:**
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.sh | bash
+git clone -b kimi-web-desktop https://github.com/grafizum/kimi-cli-desktop.git
+cd kimi-cli-desktop && npm install && npm start
 ```
-
-> [!NOTE]
-> The web edition is young: if the install scripts or `Web` assets are not on the latest release yet, build from source below or use the CLI edition meanwhile.
 
 ## How it works
 
@@ -92,14 +95,7 @@ curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-
 
 ## Build from source
 
-```bash
-git clone -b kimi-web-desktop https://github.com/grafizum/kimi-cli-desktop.git
-cd kimi-cli-desktop
-npm install
-npm start        # dev run (npm run dev adds DevTools + console forwarding)
-npm run smoke    # dependency-free test suite
-npm run dist     # build the installers for this OS
-```
+See the clone + build commands in [Install](#install--two-different-apps-pick-yours) above; `npm run dev` adds DevTools + console forwarding, `npm run smoke` is the test suite, `npm run dist` builds this OS's installers.
 
 ## Releasing
 
