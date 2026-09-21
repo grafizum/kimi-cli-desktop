@@ -55,6 +55,8 @@ jobs:
       - name: The packed app exists
         shell: bash
         run: |
-          found=$(find dist -maxdepth 2 \( -name "*.exe" -o -name "kimi-code-desktop" -o -name "*.app" \) | head -5)
+          # The unpacked Linux binary is named after the package
+          # (kimi-cli-desktop-web); macOS makes a .app bundle, Windows an exe.
+          found=$(find dist -maxdepth 3 \( -name "*.exe" -o -name "kimi-cli-desktop-web" -o -name "*.app" \) | head -5)
           echo "$found"
           [ -n "$found" ] || { echo "::error::electron-builder produced no app"; exit 1; }
