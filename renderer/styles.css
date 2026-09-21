@@ -54,7 +54,6 @@ body {
 #titlebar {
   display: flex;
   align-items: stretch;
-  justify-content: space-between;
   height: 34px;
   min-height: 34px;
   background: var(--bg-panel);
@@ -62,11 +61,47 @@ body {
   user-select: none;
 }
 
+/* Window controls FIRST (top-left, traffic-light style): round buttons with
+   per-button hover colors, like native macOS chrome but in the app palette. */
+.tb-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  -webkit-app-region: no-drag;
+}
+
+.tb-btn {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--btn, #55555c);
+  color: transparent; /* the glyph appears on hover, like macOS */
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tb-btn svg { display: block; }
+.tb-btn:hover, .tb-btn:hover { color: rgba(0, 0, 0, 0.6); }
+#win-min { --btn: #febc2e; }
+#win-max { --btn: #28c840; }
+#win-close { --btn: #ff5f57; }
+#win-min:hover { background: #ffca4f; }
+#win-max:hover { background: #43dd5b; }
+#win-close:hover { background: #ff7b74; }
+
+/* Maximize shows the filled square; while maximized it becomes restore. */
+#win-max .ico-restore { display: none; }
+body.maximized #win-max .ico-max { display: none; }
+body.maximized #win-max .ico-restore { display: block; }
+
 .tb-drag {
   flex: 1;
   display: flex;
   align-items: center;
-  padding-left: 10px;
   -webkit-app-region: drag;
 }
 
@@ -92,29 +127,6 @@ body {
   background: var(--accent);
   color: var(--accent-contrast);
 }
-
-.tb-controls {
-  display: flex;
-  -webkit-app-region: no-drag;
-}
-
-/* Window buttons: real SVG glyphs at full text contrast (never a dim token
-   that melts into the panel background), sized like native Windows chrome. */
-.tb-btn {
-  width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  padding: 0;
-}
-.tb-btn svg { display: block; }
-.tb-btn:hover { background: var(--border); color: var(--text); }
-.tb-btn.tb-close:hover { background: #e5484d; color: #ffffff; }
-.tb-btn:active { opacity: 0.8; }
 
 /* ------------------------------------------------------------------ */
 /* Stage: the webview fills everything between the bars                */
