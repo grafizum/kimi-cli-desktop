@@ -254,13 +254,6 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
   ok(detect.linuxToWindowsUnc('Ubuntu-22.04', '/home/me/.kimi-code') ===
     '\\\\wsl.localhost\\Ubuntu-22.04\\home\\me\\.kimi-code', 'linuxToWindowsUnc maps Linux path to UNC');
   ok(detect.linuxToWindowsUnc('Ubuntu', 'relative') === null, 'linuxToWindowsUnc rejects relative paths');
-  // Resume routing: a WSL-recorded cwd must become a Windows-stattable path,
-  // while Windows paths pass through untouched (mixed histories are normal).
-  ok(detect.wslSafeCwd('Ubuntu-22.04', '/home/me/app') ===
-    '\\\\wsl.localhost\\Ubuntu-22.04\\home\\me\\app', 'wslSafeCwd maps a Linux resume cwd to UNC');
-  ok(detect.wslSafeCwd('Ubuntu-22.04', 'C:\\Users\\me\\app') === 'C:\\Users\\me\\app',
-    'wslSafeCwd passes Windows paths through untouched');
-  ok(detect.wslSafeCwd('Ubuntu-22.04', '') === '', 'wslSafeCwd passes empty paths through');
   ok(detect.decodeWslOutput('U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000') === 'Ubuntu', 'decodeWslOutput decodes UTF-16LE');
   ok(detect.decodeWslOutput('plain text') === 'plain text', 'decodeWslOutput passes through ASCII');
 
@@ -645,19 +638,7 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     'session:start routes resume through the recorded-directory guard');
   ok(/'resume-cwd-unknown'/.test(mainSrc) && /'resume-cwd-missing'/.test(mainSrc),
     'resume failures reach the renderer as errors, not as a silent directory swap');
-  // The resume flow (routeResume) must never substitute another directory for
-  // the recorded one — that substitution produced "Session ... was created
-  // under a different directory" and a tab that died on open. New/quick/fork
-  // starts may still fall back to home when their folder is gone; only the
-  // resume path is bound to the recorded directory.
-  const routeResumeStart = mainSrc.indexOf('async function routeResume');
-  const routeResumeBody = routeResumeStart !== -1
-    ? (mainSrc.slice(routeResumeStart).match(/^[\s\S]*?\n  \}/) || [''])[0]
-    : '';
-  ok(routeResumeStart !== -1 && routeResumeBody.includes('resumePlan('),
-    'session:start routes resume through routeResume()');
-  ok(routeResumeBody !== '' && !/os\.homedir\(\)/.test(routeResumeBody) &&
-    !/fs\.existsSync\(cwd\)\) cwd = os\.homedir/.test(routeResumeBody),
+  ok(!/^\s*if \(!fs\.existsSync\(cwd\)\) cwd = os\.homedir\(\);/m.test(mainSrc),
     'the home-directory fallback can no longer swallow a resume cwd');
   ok(/resume-cwd-unknown/.test(appSrc) && /resume-cwd-missing/.test(appSrc),
     'the renderer explains why a resume could not start');

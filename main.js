@@ -136,16 +136,6 @@ function linuxKimiCodeHome() {
   return process.env.KIMI_CODE_HOME || '';
 }
 
-// The KIMI_CODE_HOME to hand ONE spawned CLI, matched to the environment that
-// CLI will run in (see sanitizeKimiCodeHome). In native mode a user-set folder
-// that points into WSL is ignored — the CLI falls back to its Windows-side
-// default, which is the only home it can actually use. Returns { target,
-// kimiCodeHome } so callers also know which side the CLI is running on.
-function matchingSessionEnv(spawnWsl) {
-  const target = spawnWsl ? 'wsl' : 'native';
-  return { target, kimiCodeHome: sanitizeKimiCodeHome(settings.kimiCodeHome, target) };
-}
-
 // Windows-readable KIMI_CODE_HOME for scanning session history.
 function scanKimiCodeHome() {
   if (settings.kimiCodeHome) {
@@ -178,10 +168,6 @@ function isWindowsPath(p) {
   return typeof p === 'string' && /^[A-Za-z]:[\\/]/.test(p);
 }
 
-function escapeRegExp(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 // A Windows path saved back when kimi ran natively can't be used inside the
 // distro, so fall back to the distro's home directory in that case.
 function effectiveCwd() {
@@ -195,28 +181,6 @@ function effectiveCwd() {
 
 function currentEnv() {
   return { ...process.env };
-}
-
-// KIMI_CODE_HOME must always match the environment the CLI actually runs in:
-// a Linux path (/home/...) inside WSL, a Windows path on Windows. A mismatch
-// makes the CLI look for its data on the wrong filesystem — the concrete
-// symptom is the kimi CLI's own watcher spamming "EISDIR: illegal operation on
-// a directory, watch \\wsl.localhost\…" when a *Windows* kimi is pointed at
-// the WSL share (Windows file-watchers cannot watch a 9P network share at
-// all, so it retries forever). Only a user-set Windows path survives here; a
-// Windows-set kimiCodeHome pointing INTO WSL is dropped in native mode.
-function isLinuxPath(p) {
-  return typeof p === 'string' && p.trim().startsWith('/');
-}
-
-function sanitizeKimiCodeHome(value, target) {
-  const v = typeof value === 'string' ? value.trim() : '';
-  if (!v) return '';
-  // WSL CLI: only a Linux path (or /mnt/... mount) can work — drop C:\... ones.
-  if (target === 'wsl') return isWindowsPath(v) ? '' : v;
-  // Native CLI: only a Windows path can work — drop /home/... ones.
-  if (isLinuxPath(v)) return '';
-  return v;
 }
 
 // Single-quote for `bash -lc`, escaping embedded single quotes.
@@ -564,56 +528,6 @@ async function openExternalOrReport(url) {
 }
 
 // ---------------------------------------------------------------------------
-// WSL ↔ Windows session routing
-// ---------------------------------------------------------------------------
-
-// Distros on this machine, probed once per app run — routeResume asks for it
-// on every WSL-session resume made in Windows mode.
-let wslCandidatesCache = null;
-
-// Find a distro able to resume a session whose folder lives at linuxPath
-// (e.g. /home/matrix/app). Preference order: the currently detected WSL CLI's
-// distro (same distro the user is already using), then any distro that can
-// see the path AND has a kimi binary. The Linux kimi path is probed here too —
-// the Windows-detected binary is meaningless inside a `bash -lc` command.
-async function wslInfoForFolder(linuxPath) {
-  if (isWslMode() && detection.wsl) return detection.wsl;
-  if (!wslCandidatesCache) {
-    const distros = await kimiDetect.wslDistros(currentEnv());
-    wslCandidatesCache = [];
-    for (const distro of distros) {
-      const res = await kimiDetect.wslExec(
-        distro,
-        [
-          `if [ -d ${shellQuote(linuxPath)} ]; then echo PATH_OK=1; fi`,
-          'kimi_bin=""',
-          'for c in "$(command -v kimi 2>/dev/null)" "$HOME/.kimi-code/bin/kimi" "$HOME/.local/bin/kimi" "/usr/local/bin/kimi"; do',
-          '  [ -n "$c" ] && [ -x "$c" ] && kimi_bin="$c" && break',
-          'done',
-          'echo "KIMI_BIN=$kimi_bin"',
-          'echo "WSL_HOME=$HOME"',
-        ].join('\n'),
-        currentEnv(),
-        15000,
-      );
-      const out = `${res.stdout}\n${res.stderr}`;
-      const home = (out.match(/^WSL_HOME=(.*)$/m) || [])[1];
-      if (!home) continue;
-      wslCandidatesCache.push({
-        distro,
-        home,
-        kimiPath: (out.match(/^KIMI_BIN=(.*)$/m) || [])[1] || '',
-        kimiCodeHome: `${home}/.kimi-code`,
-        _seesPath: /^PATH_OK=1$/m.test(out),
-        _hasKimi: Boolean((out.match(/^KIMI_BIN=(.+)$/m) || [])[1]),
-      });
-    }
-  }
-  const usable = wslCandidatesCache.filter((c) => c._hasKimi);
-  return usable.find((c) => c._seesPath) || usable[0] || null;
-}
-
-// ---------------------------------------------------------------------------
 // Resume guard
 // ---------------------------------------------------------------------------
 // `kimi --session <id>` only resumes when the process runs in the exact
@@ -708,12 +622,6 @@ function registerIpc() {
     return runDetection();
   });
 
-  // Note: a session folder pointing into WSL while no Windows kimi exists is
-  // self-healing — detection never consults the folder setting, so it simply
-  // finds the WSL CLI. The mismatch case that needed code is the reverse (a
-  // Windows CLI + a WSL folder), and it is handled by sanitizeKimiCodeHome()
-  // at every spawn, plus a renderer notice computed from the same state.
-
   ipcMain.handle('kimi:set-path', async (_e, p) => {
     settings.kimiPath = typeof p === 'string' ? p.trim() : '';
     saveSettings();
@@ -753,117 +661,6 @@ function registerIpc() {
     return { home, sessions: sessions.listSessions({ home }) };
   });
 
-  // Used for non-resume session starts. Returns { cwd, viaWsl }.
-  function pickStartCwd(cwd) {
-    if (isWslMode()) {
-      // Never hand a Windows path to `cd` inside the distro.
-      if (isWindowsPath(cwd)) return { cwd: detection.wsl.home, viaWsl: true };
-      return { cwd, viaWsl: true };
-    }
-    // Windows mode: a Linux path can never be cd'd into from Windows — fall
-    // back to home rather than spawning a session that dies instantly.
-    if (cwd && cwd.startsWith('/')) return { cwd: os.homedir(), viaWsl: false };
-    return { cwd, viaWsl: false };
-  }
-
-  // Route ONE resume to the right CLI. Sessions remember the environment they
-  // were created in: a cwd like /home/me/app is a WSL session, C:\... a
-  // Windows one. The user can freely switch the app between Windows mode
-  // (native kimi on PATH) and WSL mode (kimi inside a distro) — but resuming
-  // a WSL session with the Windows CLI hard-fails ("Session ... was created
-  // under a different directory": the Windows CLI cannot cd to /home/me), and
-  // the reverse spawns the Linux kimi against Windows data it cannot read.
-  // So the session's own environment decides, regardless of the mode the app
-  // happens to be in:
-  //   WSL session    → always through wsl.exe (WSL mode: the detected distro;
-  //                    Windows mode: the distro that owns the session folder)
-  //   Windows session→ always the native CLI
-  // `matchEnv` is the session-scoped matchingSessionEnv(), so the spawned CLI
-  // also gets a KIMI_CODE_HOME that exists on ITS side.
-  async function routeResume(opts, args, cols, rows, matchEnv) {
-    const id = String(opts.resumeId || '').trim();
-    const plan = sessions.resumePlan(opts.cwd);
-
-    // A session with no recorded directory cannot be attributed to an
-    // environment — keep the historical behavior (fail with resume-cwd-unknown
-    // or offer the recreate-folder dialog).
-    if (!plan.cwd) {
-      const prepared = await prepareResume(id, opts.cwd);
-      return prepared.error ? { error: prepared } : { spawn: null, prepared, cwd: '', viaWsl: false };
-    }
-
-    const wslSession = plan.cwd.startsWith('/') && !isWindowsPath(plan.cwd);
-
-    if (!wslSession) {
-      const prepared = await prepareResume(id, plan.cwd);
-      if (prepared.error) return { error: prepared };
-      const envForSpawn = matchEnv(false);
-      return {
-        spawn: () => ptyManager.spawnKimiSession({
-          binary: detection.path,
-          cwd: plan.cwd,
-          args,
-          env: currentEnv(),
-          kimiCodeHome: envForSpawn.kimiCodeHome,
-          cols,
-          rows,
-        }),
-        cwd: plan.cwd,
-        viaWsl: false,
-        prepared,
-      };
-    }
-
-    // WSL session: pick the distro that owns the folder.
-    const wsl = isWslMode() ? detection.wsl : await wslInfoForFolder(plan.cwd);
-    if (!wsl) {
-      return { error: {
-        error: 'resume-cwd-missing',
-        sessionId: id,
-        cwd: plan.cwd,
-        message: `This session was created inside WSL (${plan.cwd}), but no WSL distro that can open that folder was found.`,
-      } };
-    }
-
-    // kimi only resumes from the folder the session was created in. Existence
-    // is checked through the UNC mount (this process runs on Windows); the
-    // Linux path itself is what reaches `cd` inside the distro.
-    let linuxCwd = plan.cwd;
-    const winCwd = kimiDetect.wslSafeCwd(wsl.distro, plan.cwd);
-    let exists = true;
-    try { exists = !!winCwd && fs.existsSync(winCwd); } catch { exists = false; }
-    if (!exists) {
-      const prepared = await prepareResume(id, winCwd || plan.cwd);
-      if (prepared && prepared.error) return { error: prepared };
-      if (prepared && prepared.cwd) {
-        // prepareResume validated/created the Windows UNC path; map it back to
-        // the Linux path the CLI will cd into.
-        const prefix = `//wsl.localhost/${wsl.distro}/`;
-        const norm = String(prepared.cwd).replace(/\\/g, '/');
-        if (norm.toLowerCase().startsWith(prefix.toLowerCase())) {
-          linuxCwd = norm.slice(prefix.length - 1); // keep the leading slash
-        }
-      }
-    }
-
-    const envForSpawn = matchEnv(true);
-    return {
-      spawn: () => ptyManager.spawnWslSession({
-        wsl,
-        kimiPath: wsl.kimiPath || detection.path,
-        cwd: linuxCwd,
-        args,
-        env: currentEnv(),
-        kimiCodeHome: envForSpawn.kimiCodeHome,
-        cols,
-        rows,
-      }),
-      cwd: linuxCwd,
-      viaWsl: true,
-      prepared: { cwd: linuxCwd },
-    };
-  }
-
   ipcMain.handle('session:start', async (_e, opts) => {
     if (!detection.found || !detection.path) {
       const det = await runDetection();
@@ -887,63 +684,47 @@ function registerIpc() {
     const rows = Math.max(opts.rows || 24, 2);
 
     let session;
-    let cwd;
-    let viaWsl = false;
-
+    let cwd = opts.cwd || effectiveCwd();
+    // kimi refuses to resume a session from any directory other than the one the
+    // session was created in ("Session ... was created under a different
+    // directory"). Quietly swapping in the home directory therefore looked like
+    // a dead Resume button: the tab opened, the CLI errored and exited. Keep the
+    // recorded directory and let the user recreate it when it is gone.
     if (opts.resumeId) {
-      // Resume: the session's recorded directory decides which CLI runs it
-      // (see routeResume) — a WSL-created session must run inside its distro
-      // even when the app currently detected the Windows CLI, and vice versa.
-      const routed = await routeResume(opts, args, cols, rows, matchingSessionEnv);
-      if (routed.error) return routed.error;
-      if (!routed.spawn) {
-        // No recorded directory: the CLI would refuse to resume — the same
-        // failure the app reported before routing existed.
-        return {
-          error: 'resume-cwd-unknown',
-          sessionId: String(opts.resumeId || ''),
-          command: `kimi -r ${String(opts.resumeId || '').trim()}`,
-          message: routed.prepared && routed.prepared.message,
-        };
-      }
-      session = routed.spawn();
-      cwd = routed.cwd;
-      viaWsl = !!routed.viaWsl;
+      const prepared = await prepareResume(opts.resumeId, opts.cwd);
+      if (prepared.error) return prepared;
+      cwd = prepared.cwd;
+    }
+    // Never hand a Windows path to `cd` inside the distro.
+    if (!opts.resumeId && isWslMode() && isWindowsPath(cwd)) cwd = detection.wsl.home;
+    if (isWslMode()) {
+      // Working directory is a Linux path inside WSL — no Windows existence check.
+      session = ptyManager.spawnWslSession({
+        wsl: detection.wsl,
+        kimiPath: detection.path,
+        cwd,
+        args,
+        env: currentEnv(),
+        kimiCodeHome: linuxKimiCodeHome(),
+        cols,
+        rows,
+      });
     } else {
-      const picked = pickStartCwd(opts.cwd || effectiveCwd());
-      cwd = picked.cwd;
-      viaWsl = picked.viaWsl;
-      // KIMI_CODE_HOME must match the side the CLI runs on (see
-      // matchingSessionEnv) — never point a Windows kimi at WSL data.
-      const envForSpawn = matchingSessionEnv(viaWsl);
       // Never start inside a directory that doesn't exist — fall back to home.
-      if (viaWsl) {
-        session = ptyManager.spawnWslSession({
-          wsl: detection.wsl,
-          kimiPath: detection.path,
-          cwd,
-          args,
-          env: currentEnv(),
-          kimiCodeHome: envForSpawn.kimiCodeHome,
-          cols,
-          rows,
-        });
-      } else {
-        try {
-          if (!fs.existsSync(cwd)) cwd = os.homedir();
-        } catch {
-          cwd = os.homedir();
-        }
-        session = ptyManager.spawnKimiSession({
-          binary: detection.path,
-          cwd,
-          args,
-          env: currentEnv(),
-          kimiCodeHome: envForSpawn.kimiCodeHome,
-          cols,
-          rows,
-        });
+      try {
+        if (!opts.resumeId && !fs.existsSync(cwd)) cwd = os.homedir();
+      } catch {
+        cwd = os.homedir();
       }
+      session = ptyManager.spawnKimiSession({
+        binary: detection.path,
+        cwd,
+        args,
+        env: currentEnv(),
+        kimiCodeHome: linuxKimiCodeHome(),
+        cols,
+        rows,
+      });
     }
 
     session.on('data', (data) => send('pty:data', { tabId: session.id, data }));
@@ -963,9 +744,6 @@ function registerIpc() {
       mode: opts.mode || 'default',
       resumeId: opts.resumeId || null,
       quickPrompt: opts.quickPrompt || null,
-      // True when the CLI actually runs inside the WSL distro — the renderer
-      // shows a WSL tag on the tab from it.
-      viaWsl,
     };
   });
 

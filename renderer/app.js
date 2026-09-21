@@ -473,22 +473,6 @@ function renderStatusBar() {
   const homeText = genericPath(state.kimiHomeDisplay || state.kimiHome);
   $('#status-home').textContent = homeText;
   $('#status-home').title = homeText;
-  // Mismatch notice: a WSL session folder while a Windows kimi CLI is active.
-  // Spawning ignores that folder (its data is unreachable for the Windows CLI —
-  // this is what used to surface as the CLI's EISDIR watcher spam), so say so
-  // where the setting lives instead of failing silently.
-  const mismatch = state.kimi && state.kimi.found && !isWsl()
-    && typeof state.settings.kimiCodeHome === 'string'
-    && /^\\\\wsl/i.test(state.settings.kimiCodeHome.trim());
-  const chip = $('#status-mismatch');
-  if (chip) {
-    chip.classList.toggle('hidden', !mismatch);
-    if (mismatch) {
-      chip.title = 'The sessions folder points into WSL, but a Windows kimi CLI is active. ' +
-        'New sessions use the CLI\'s own Windows data folder. Point the folder at a Windows ' +
-        'path in Settings → Sessions (or remove the Windows kimi) to stop this notice.';
-    }
-  }
 }
 
 function renderWelcome(showMissing) {
@@ -777,7 +761,6 @@ async function forkSession(s) {
     argv: ['fork', s.id, '-y'],
     kind: 'fork',
     label,
-    viaWslHint: s.cwd && s.cwd.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(s.cwd),
   });
   if (tab) toast('Forking conversation — the copy lands in Previous sessions', 'ok');
 }
@@ -1190,8 +1173,7 @@ function customKeyHandler(tab, e) {
 function setTabLabel(tab, label) {
   tab.label = label || tab.label;
   tab.tabEl.querySelector('.tab-label').textContent = tab.label;
-  const wslBadge = tab.meta && tab.meta.viaWsl ? '  · WSL' : '';
-  tab.tabEl.title = `${tab.label}${wslBadge}`;
+  tab.tabEl.title = tab.label;
 }
 
 function activateTab(id) {
@@ -1343,7 +1325,6 @@ async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, com
   }
   const tab = createTab({ id: res.tabId, label: label || defaultLabel(kind, res), kind: kind || 'interactive' });
   tab.meta = res;
-  if (res.viaWsl || opts.viaWslHint) tab.tabEl.classList.add('in-wsl');
   return tab;
 }
 
@@ -2241,9 +2222,6 @@ function wireEvents() {
   $('#search-next').addEventListener('click', () => { const f = $('#search-input').value; if (f) activeTab()?.search.findNext(f); });
   $('#search-prev').addEventListener('click', () => { const f = $('#search-input').value; if (f) activeTab()?.search.findPrevious(f); });
   $('#search-close').addEventListener('click', toggleSearch);
-
-  // WSL-folder mismatch chip → straight to the setting that can fix it.
-  $('#status-mismatch').addEventListener('click', () => openSettingsModal('sessions'));
 
   window.addEventListener('keydown', onGlobalKeydown);
 }

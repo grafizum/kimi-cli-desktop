@@ -749,20 +749,6 @@ body.resizing #sidebar { transition: none; }
 .tab .tab-status-badge { font-size: 10px; color: var(--text-faint); }
 .tab.exited { opacity: 0.7; }
 .tab.exited .tab-status-badge { color: var(--red); }
-/* Sessions that actually run inside WSL carry a small tag after their title,
-   so a Windows-mode user can see at a glance which side a tab belongs to. */
-.tab.in-wsl::after {
-  content: "WSL";
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  color: var(--label-muted);
-  background: var(--bg-hover);
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin-left: 2px;
-  flex: 0 0 auto;
-}
 
 .add-tab {
   appearance: none;
@@ -1082,26 +1068,6 @@ body:not(.term-classic) .tab.active {
   font-size: 11px;
 }
 #statusbar .spacer { flex: 1 1 auto; }
-
-/* Mismatch notice: the session folder points into WSL while a Windows kimi is
-   active. A button, not a label — clicking it opens Settings → Sessions where
-   the folder can actually be fixed. */
-.status-mismatch {
-  appearance: none;
-  border: 1px solid var(--yellow);
-  background: transparent;
-  color: var(--yellow);
-  font-family: var(--font-ui);
-  font-size: 10.5px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 2px 9px;
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: background 0.12s;
-}
-.status-mismatch:hover { background: color-mix(in srgb, var(--yellow) 16%, transparent); }
-.status-mismatch.hidden { display: none; }
 
 /* "Copied" confirmation — a tiny chip at the bottom-right of the status bar
    that fades in whenever text was copied from the app. role=status so screen
