@@ -53,7 +53,19 @@ It does **not** reimplement the agent through an API — it runs the *real* `kim
 
 ## 📦 Install
 
-### One command
+> [!WARNING]
+> **This repo ships TWO different apps — make sure you install the one you want.**
+>
+> | | **⬇ THIS page — the CLI edition** | **⬇ The other app — the Web edition** |
+> |---|---|---|
+> | **You get** | a **terminal app**: tabs, session history, the classic kimi TUI + chat | a **chat window**: the kimi web UI fullscreen, no terminal |
+> | **Windows (PowerShell)** | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.ps1 \| iex` ← this one | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.ps1 \| iex` |
+> | **Linux / macOS (bash)** | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.sh \| bash` ← this one | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.sh \| bash` |
+> | **Manual download** | the `v1.x` releases below (files WITHOUT `-Web-`) | the [`web-v1.x` release](https://github.com/grafizum/kimi-cli-desktop/releases?q=web-v&expanded=true) (files WITH `-Web-`) |
+>
+> Each installer only ever downloads its own edition's files, and the two apps install side by side — details in the [Web edition README](https://github.com/grafizum/kimi-cli-desktop/blob/kimi-web-desktop/README.md).
+
+### One command (CLI edition — the app on this page)
 
 **Windows** (PowerShell):
 
