@@ -171,6 +171,11 @@ const css = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css')
 ok(css.includes('.webview-live') && !/display:\s*none[^}]*(#chat|webview)/.test(css),
   'css: the webview stays laid out (visibility, never display:none)');
 ok(css.includes("data-theme='light'"), 'css: light theme tokens exist');
+// A JS artifact at the top of the CSS (once shipped as "'use strict';") glued
+// itself onto the :root selector, silently killing EVERY dark-theme token -
+// black icons/text on the near-black panel. The first real rule must be :root.
+ok(/(^|\*/)\s*:?root\s*\{/.test(css) || /:\s*root\s*\{/.test(css), 'css: the :root token block parses');
+ok(!css.includes("'use strict'") && !/\bfunction\b|=>/.test(css), 'css: no JavaScript artifacts in the stylesheet');
 
 // preload bridge surface
 const preloadSrc = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8');
