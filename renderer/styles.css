@@ -61,39 +61,30 @@ body {
   user-select: none;
 }
 
-/* Window controls FIRST (top-left, traffic-light style): round buttons with
-   per-button hover colors, like native macOS chrome but in the app palette. */
+/* Window controls, top-RIGHT (the brand drag region comes first): plain
+   monochrome glyphs in the app palette — line = minimize, square =
+   maximize (double square while maximized), cross = close. No colors. */
 .tb-controls {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
+  align-items: stretch;
   -webkit-app-region: no-drag;
 }
 
 .tb-btn {
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--btn, #55555c);
-  color: transparent; /* the glyph appears on hover, like macOS */
-  cursor: pointer;
+  width: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
 }
 .tb-btn svg { display: block; }
-.tb-btn:hover, .tb-btn:hover { color: rgba(0, 0, 0, 0.6); }
-#win-min { --btn: #febc2e; }
-#win-max { --btn: #28c840; }
-#win-close { --btn: #ff5f57; }
-#win-min:hover { background: #ffca4f; }
-#win-max:hover { background: #43dd5b; }
-#win-close:hover { background: #ff7b74; }
-
-/* Maximize shows the filled square; while maximized it becomes restore. */
+.tb-btn:hover { background: var(--bg-card); color: var(--text); }
+.tb-btn.tb-close:hover { background: #e5484d; color: #ffffff; }
+.tb-btn:active { opacity: 0.8; }
 #win-max .ico-restore { display: none; }
 body.maximized #win-max .ico-max { display: none; }
 body.maximized #win-max .ico-restore { display: block; }
@@ -127,6 +118,59 @@ body.maximized #win-max .ico-restore { display: block; }
   background: var(--accent);
   color: var(--accent-contrast);
 }
+
+/* Models & providers: a quiet text button that matches the chrome. */
+.tb-actions {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.tb-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.tb-text-btn:hover { color: var(--text); background: var(--bg-card); border-color: var(--border); }
+.tb-text-btn .ico { opacity: 0.9; }
+
+/* Window controls, top-RIGHT: plain monochrome glyphs in the app palette —
+   line = minimize, square = maximize (double square while maximized),
+   cross = close. No colored dots. */
+.tb-controls {
+  display: flex;
+  align-items: stretch;
+  -webkit-app-region: no-drag;
+}
+
+.tb-btn {
+  width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+}
+.tb-btn svg { display: block; }
+.tb-btn:hover { background: var(--bg-card); color: var(--text); }
+.tb-btn.tb-close:hover { background: #e5484d; color: #ffffff; }
+.tb-btn:active { opacity: 0.8; }
+#win-max .ico-restore { display: none; }
+body.maximized #win-max .ico-max { display: none; }
+body.maximized #win-max .ico-restore { display: block; }
 
 /* ------------------------------------------------------------------ */
 /* Stage: the webview fills everything between the bars                */
@@ -225,6 +269,90 @@ code {
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------------ */
+/* Modal (Models & providers)                                          */
+/* ------------------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.modal-backdrop[hidden] { display: none; }
+
+.modal {
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+}
+.modal h2 { font-size: 15px; font-weight: 650; }
+.modal-hint { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.modal-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.modal-actions { display: flex; align-items: center; gap: 8px; }
+.modal-actions .spacer { flex: 1; }
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px 12px;
+}
+legend { font-size: 11.5px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.grow { grid-column: 1 / -1; }
+.field-label { font-size: 11px; color: var(--text-dim); }
+
+.field input[type='text'],
+.field input[type='password'],
+.field input[type='number'],
+.field select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+}
+.field input:focus, .field select:focus, textarea:focus { outline: 1px solid var(--accent); }
+
+.checks { display: flex; gap: 14px; align-items: center; height: 100%; font-size: 12px; }
+.checks label { display: inline-flex; gap: 5px; align-items: center; color: var(--text); }
+
+.config-editor {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+}
+.field-hint { font-size: 11px; color: var(--text-dim); }
+.field-hint.err { color: var(--danger); }
+.field-hint.ok { color: var(--ok); }
+
+.hidden { display: none !important; }
 
 /* ------------------------------------------------------------------ */
 /* Status bar                                                          */

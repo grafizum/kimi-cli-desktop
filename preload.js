@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('kimiDesktop', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
 
+  // config.toml — where models & providers are added/removed (custom API
+  // platforms and local llama runs via Ollama / llama.cpp / LM Studio)
+  readConfig: () => ipcRenderer.invoke('config:read'),
+  writeConfig: (content) => ipcRenderer.invoke('config:write', content),
+
   // The chat server lifecycle — the shell's whole reason to exist.
   ensureWeb: () => ipcRenderer.invoke('web:ensure'),
   webStatus: () => ipcRenderer.invoke('web:status'),

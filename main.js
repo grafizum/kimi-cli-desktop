@@ -406,6 +406,51 @@ function registerIpc() {
     e.returnValue = { colorScheme: settings.theme === 'light' ? 'light' : 'dark' };
   });
 
+  // --- config.toml (models & providers) -------------------------------------
+  // The kimi CLI reads <KIMI_CODE_HOME>/config.toml at startup; custom models
+  // (OpenRouter, local llama via Ollama/llama.cpp/LM Studio, …) are added
+  // there. In WSL mode the file lives in the distro, reached over the UNC
+  // mount — same path Windows-side as the CLI edition used for its editor.
+  function kimiConfigPaths() {
+    if (isWslMode()) {
+      const linuxHome = (settings.kimiCodeHome || detection.wsl.kimiCodeHome
+        || `${detection.wsl.home}/.kimi-code`).replace(/\/+$/, '');
+      const unc = kimiDetect.linuxToWindowsUnc(detection.wsl.distro, linuxHome);
+      return {
+        fsPath: unc ? path.join(unc, 'config.toml') : '',
+        displayPath: `${linuxHome}/config.toml`,
+        viaWsl: true,
+      };
+    }
+    const home = settings.kimiCodeHome || process.env.KIMI_CODE_HOME
+      || path.join(os.homedir(), '.kimi-code');
+    return { fsPath: path.join(home, 'config.toml'), displayPath: path.join(home, 'config.toml'), viaWsl: false };
+  }
+
+  ipcMain.handle('config:read', async () => {
+    const p = kimiConfigPaths();
+    let content = '';
+    try { content = fs.readFileSync(p.fsPath, 'utf8'); } catch { /* first run — no file yet */ }
+    return { content, path: p.displayPath, exists: content.length > 0, viaWsl: p.viaWsl };
+  });
+
+  ipcMain.handle('config:write', async (_e, content) => {
+    if (typeof content !== 'string' || content.length > 1_000_000) {
+      return { ok: false, error: 'invalid config content' };
+    }
+    const p = kimiConfigPaths();
+    if (!p.fsPath) return { ok: false, error: 'config path unavailable in this setup' };
+    try {
+      fs.mkdirSync(path.dirname(p.fsPath), { recursive: true });
+      const tmp = `${p.fsPath}.tmp`;
+      fs.writeFileSync(tmp, content, 'utf8');
+      fs.renameSync(tmp, p.fsPath);
+      return { ok: true, path: p.displayPath, viaWsl: p.viaWsl };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   // The shell's core: report the server state and, if wanted but absent,
   // (re)start it. The renderer calls this on boot, on CLI detection, and
   // whenever the user hits retry.

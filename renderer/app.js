@@ -145,6 +145,122 @@ document.getElementById('btn-copy-cmd').addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Models & providers (config.toml editor)
+// ---------------------------------------------------------------------------
+// The kimi CLI picks its model/provider from <KIMI_CODE_HOME>/config.toml.
+// This panel inserts correctly-shaped [providers.*] / [models.*] blocks —
+// custom API platforms or a local llama served by Ollama / llama.cpp /
+// LM Studio — and saves after validating the file with the CLI itself.
+
+const MODEL_CAPS_DOC = {
+  openai_legacy: 'OpenAI-compatible endpoints — Ollama (http://localhost:11434/v1), llama.cpp server (http://localhost:8080/v1), LM Studio (http://localhost:1234/v1), OpenRouter, …',
+  openai_responses: 'The newer OpenAI Responses API format',
+  anthropic: 'Anthropic Claude API',
+  gemini: 'Google Gemini API',
+  kimi: 'Kimi / Moonshot platform',
+};
+
+const models = { modal: null, content: '' };
+
+function openModels() {
+  models.modal = document.getElementById('modal-models');
+  models.modal.classList.remove('hidden');
+  api.readConfig().then((res) => {
+    models.content = res.content || '';
+    document.getElementById('mp-config').value = models.content;
+    setModelsStatus(`Loaded from ${res.path}${res.viaWsl ? ' (inside WSL)' : ''}${res.exists ? '' : ' — new file, save creates it'}.`);
+  }).catch((err) => setModelsStatus(`Could not read the config: ${err.message || err}`, 'err'));
+}
+
+function closeModels() {
+  models.modal.classList.add('hidden');
+}
+
+function setModelsStatus(text, kind) {
+  const elStatus = document.getElementById('mp-status');
+  elStatus.textContent = text;
+  elStatus.className = `field-hint${kind ? ` ${kind}` : ''}`;
+}
+
+// Append a (commented) block to the editor. Idempotent: an existing block
+// with the same name is pointed out instead of duplicated.
+function insertProviderBlock() {
+  const name = (document.getElementById('mp-name').value || '').trim().replace(/[^A-Za-z0-9_-]/g, '-') || 'my-provider';
+  const type = document.getElementById('mp-type').value;
+  const url = (document.getElementById('mp-url').value || '').trim();
+  const key = (document.getElementById('mp-key').value || '').trim();
+  const editor = document.getElementById('mp-config');
+  if (editor.value.includes(`[providers.${name}]`)) {
+    setModelsStatus(`A [providers.${name}] block already exists — edit it below instead.`, 'err');
+    return;
+  }
+  const block = [
+    ``,
+    `[providers.${name}]`,
+    `type = "${type}"          # ${MODEL_CAPS_DOC[type]}`,
+    `base_url = "${url || 'http://localhost:11434/v1'}"`,
+    ...(key ? [`api_key = "${key.replace(/"/g, '\\"')}"`] : []),
+    ``,
+  ].join('\n');
+  editor.value = editor.value.replace(/\s*$/, '') + '\n' + block;
+  setModelsStatus(`Provider block added — now add at least one model for it.`, 'ok');
+}
+
+function insertModelBlock() {
+  const id = (document.getElementById('md-id').value || '').trim();
+  const ctx = Math.max(1024, parseInt(document.getElementById('md-ctx').value, 10) || 32768);
+  const caps = [];
+  if (document.getElementById('md-think').checked) caps.push('thinking');
+  if (document.getElementById('md-img').checked) caps.push('image_in');
+  const editor = document.getElementById('mp-config');
+  if (!id) { setModelsStatus('Enter the model id first (e.g. llama3.1:8b for Ollama).', 'err'); return; }
+  const providerHint = (editor.value.match(/\[providers\.([A-Za-z0-9_-]+)\]/) || [])[1] || 'my-provider';
+  if (editor.value.includes(`[models."${id}"]`)) {
+    setModelsStatus(`A [models."${id}"] block already exists — edit it below instead.`, 'err');
+    return;
+  }
+  const block = [
+    ``,
+    `[models."${id}"]`,
+    `provider = "${providerHint}"`,
+    `model = "${id}"`,
+    `max_context_size = ${ctx}`,
+    ...(caps.length ? [`capabilities = [${caps.map((c) => `"${c}"`).join(', ')}]`] : []),
+    ``,
+  ].join('\n');
+  editor.value = editor.value.replace(/\s*$/, '') + '\n' + block;
+  setModelsStatus(`Model block added. Save, then switch with /model in the chat.`, 'ok');
+}
+
+async function saveModels() {
+  const content = document.getElementById('mp-config').value;
+  // Validate with the CLI itself when possible — it is the consumer of the
+  // file, so its parser is the truth. A CLI without validation still saves.
+  setModelsStatus('Validating with the kimi CLI…');
+  try {
+    const res = await api.writeConfig(content);
+    if (!res.ok) { setModelsStatus(`Save failed: ${res.error}`, 'err'); return; }
+    setModelsStatus(`Saved to ${res.path}${res.viaWsl ? ' (inside WSL)' : ''} — start a new conversation (or /model in chat) to use it.`, 'ok');
+    models.content = content;
+    setTimeout(closeModels, 1600);
+  } catch (err) {
+    setModelsStatus(`Save failed: ${err.message || err}`, 'err');
+  }
+}
+
+document.getElementById('btn-models').addEventListener('click', openModels);
+document.getElementById('mp-add-provider').addEventListener('click', insertProviderBlock);
+document.getElementById('mp-add-model').addEventListener('click', insertModelBlock);
+document.getElementById('mp-save').addEventListener('click', saveModels);
+document.getElementById('mp-cancel').addEventListener('click', closeModels);
+document.getElementById('modal-models').addEventListener('mousedown', (e) => {
+  if (e.target.id === 'modal-models') closeModels(); // backdrop click closes
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && models.modal && !models.modal.classList.contains('hidden')) closeModels();
+});
+
+// ---------------------------------------------------------------------------
 // Title bar
 // ---------------------------------------------------------------------------
 
