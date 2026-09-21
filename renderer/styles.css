@@ -62,8 +62,9 @@ body {
 }
 
 /* Window controls, top-RIGHT (the brand drag region comes first): plain
-   monochrome glyphs in the app palette — line = minimize, square =
-   maximize (double square while maximized), cross = close. No colors. */
+   monochrome glyphs at FULL text brightness — never a dim token, which
+   melts into the panel background on scaled displays. line = minimize,
+   square = maximize (double square while maximized), cross = close. */
 .tb-controls {
   display: flex;
   align-items: stretch;
@@ -77,14 +78,16 @@ body {
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--text-dim);
+  /* Full-strength foreground, with a brightness lift so the icons read
+     clearly against the panel in both themes. */
+  color: var(--text);
   cursor: pointer;
   padding: 0;
 }
 .tb-btn svg { display: block; }
-.tb-btn:hover { background: var(--bg-card); color: var(--text); }
+.tb-btn:hover { background: var(--border); }
 .tb-btn.tb-close:hover { background: #e5484d; color: #ffffff; }
-.tb-btn:active { opacity: 0.8; }
+.tb-btn:active { opacity: 0.75; }
 #win-max .ico-restore { display: none; }
 body.maximized #win-max .ico-max { display: none; }
 body.maximized #win-max .ico-restore { display: block; }
@@ -143,34 +146,6 @@ body.maximized #win-max .ico-restore { display: block; }
 }
 .tb-text-btn:hover { color: var(--text); background: var(--bg-card); border-color: var(--border); }
 .tb-text-btn .ico { opacity: 0.9; }
-
-/* Window controls, top-RIGHT: plain monochrome glyphs in the app palette —
-   line = minimize, square = maximize (double square while maximized),
-   cross = close. No colored dots. */
-.tb-controls {
-  display: flex;
-  align-items: stretch;
-  -webkit-app-region: no-drag;
-}
-
-.tb-btn {
-  width: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
-}
-.tb-btn svg { display: block; }
-.tb-btn:hover { background: var(--bg-card); color: var(--text); }
-.tb-btn.tb-close:hover { background: #e5484d; color: #ffffff; }
-.tb-btn:active { opacity: 0.8; }
-#win-max .ico-restore { display: none; }
-body.maximized #win-max .ico-max { display: none; }
-body.maximized #win-max .ico-restore { display: block; }
 
 /* ------------------------------------------------------------------ */
 /* Stage: the webview fills everything between the bars                */
