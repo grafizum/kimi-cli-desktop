@@ -13,6 +13,8 @@
 [![Unofficial](https://img.shields.io/badge/status-unofficial%20project-red)](#-legal-notice)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+<img src="docs/screenshots/web-main.png" alt="Kimi Code Desktop (Web edition): the chat interface filling the window, with the Models button and window controls in the title bar" width="880" />
+
 </div>
 
 ---
@@ -26,11 +28,68 @@
 
 ## What this is
 
-This branch (`kimi-web-desktop`) is the **web edition** of Kimi Code Desktop: the whole app is the chat interface that the `kimi` CLI itself ships (`kimi web`), loaded into a native window and given desktop chrome — title bar, dock/taskbar icon, installer, auto-restart.
+You know the `kimi` CLI's web mode: you run `kimi web`, and it prints a `localhost` link to a full chat interface — thinking blocks, tool-call cards, file diffs, attachment uploads, approval buttons, background tasks. This app takes that and does three things to it:
 
-**It is not a rebuild.** The UI you see is served byte-for-byte by the CLI's own web server on `127.0.0.1` — thinking blocks, tool-call cards, file diffs, attachment uploads, approval prompts, background tasks, Mermaid rendering, all of it exactly as Moonshot ships it, and automatically up to date whenever you update the CLI.
+1. **Runs it for you** — launch the app instead of a terminal. It starts the CLI's web server, waits for it, and opens the interface in a real desktop window (taskbar icon, installer, Start-menu entry).
+2. **Gets out of the way** — the chat fills the window edge to edge. The only chrome is a slim title bar (a **Models** button and the window controls) and a one-line status bar. No tabs, no sidebar, no settings screens duplicating what the chat already has.
+3. **Stays honest** — the UI you see is served **byte-for-byte by the CLI itself**. Nothing between you and the model is re-implemented, re-styled, proxied through an API, or lagging behind CLI updates. Update `kimi`, and the app's interface updates with it.
 
-> **The reasoning you see is the real thing.** Nothing sits between the CLI's output and your eyes to re-style, truncate, or lag behind CLI updates.
+> **The reasoning you see is the real thing.** The thinking blocks are drawn by the CLI's own UI, not rebuilt by us — nothing sits in between to truncate, re-style, or hide them.
+
+## How it works
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Kimi Code Desktop (Web edition)                     │
+│                                                     │
+│  title bar (Models · window controls)               │
+│ ┌─────────────────────────────────────────────────┐ │
+│ │        Kimi chat UI — served by the CLI,        │ │
+│ │        rendered unmodified in a sandboxed       │ │
+│ │        webview, edge to edge                    │ │
+│ └─────────────────────────────────────────────────┘ │
+│  status bar (kimi version · chat · localhost)       │
+└───────────┬─────────────────────────────────────────┘
+            │ spawns & supervises
+            ▼
+     `kimi web --no-open`          ← the real CLI binary
+            │ binds 127.0.0.1:<random port>, prints URL + token
+            ▼
+     ~/.kimi-code                  ← your sessions, config.toml,
+      (or your WSL distro's)         credentials — never touched by us
+```
+
+Step by step, what the app does on launch:
+
+1. **Finds the CLI.** It looks for `kimi` on `PATH`, in the known npm/installer locations, and — on Windows — inside WSL distros. While it searches (and if the CLI isn't installed yet), the window shows a card with the install command; the app **re-checks every 5 seconds**, so it lights up by itself the moment the CLI appears. No restart needed.
+2. **Starts one `kimi web` server** with `--no-open`, on a random loopback port. It reads the server's own startup banner to learn the URL and access token.
+3. **Embeds the served UI** in a sandboxed `<webview>`. The main process validates every URL the webview may load — only the CLI's `127.0.0.1` URL **with that token** is accepted; anything else is refused at attach time. The guest gets no Node integration and popups open in your browser.
+4. **Seeds the appearance.** A tiny preload inside the webview sets the chat's color scheme to match the app's theme and marks the web UI's first-run onboarding as done (its own official `?kimi_onboarded=1` mechanism) — so the chat opens in your theme, straight into the workspace.
+5. **Supervises.** If the server exits (crash, CLI update), the app restarts it and reloads the view; if the CLI disappears, the window falls back to the install-hint card. Closing the window stops the server.
+
+Your kimi data — sessions, `config.toml`, credentials — stays exactly where the CLI put it. The app never writes to it, except the one `config.toml` edit you make yourself in the Models panel.
+
+## Using your own models (local llama, OpenRouter, …)
+
+The chat uses whatever models the CLI has configured. The **Models** button in the title bar opens a panel that edits the CLI's `config.toml` directly — with helper fields so you don't have to remember the exact TOML shape:
+
+- **Add provider** — name it, pick a type, give a base URL. Any **OpenAI-compatible** server works, which covers all the usual local llama stacks: **Ollama** (`http://localhost:11434/v1`), **llama.cpp server** (`http://localhost:8080/v1`), **LM Studio** (`http://localhost:1234/v1`) — plus OpenRouter, Anthropic, Gemini, Kimi/Moonshot.
+- **Add model** — the model id exactly as the provider reports it (e.g. `llama3.1:8b` for Ollama), a context size, and capabilities (`thinking`, image input).
+- **Remove** a model or provider by deleting its block in the editor. Save writes `config.toml` in place (WSL-aware: it edits inside the distro when kimi runs there).
+
+Switch models with `/model` inside the chat — your custom models appear in the CLI's own picker.
+
+<p align="center">
+  <img src="docs/screenshots/web-models.png" alt="The Models &amp; providers panel: provider fields, model fields, and the config.toml editor with an Ollama provider and a llama model" width="640" />
+</p>
+
+## First launch without the CLI
+
+If the app can't find `kimi`, it shows exactly one screen: the install command (copy button included), a **Check again** button, and a note that it keeps re-checking on its own. Install the CLI, and the chat appears without touching the app.
+
+<p align="center">
+  <img src="docs/screenshots/web-setup.png" alt="The setup card: Kimi Code CLI not found, install command, Check again button" width="640" />
+</p>
 
 ## The two editions — pick the right one
 
@@ -42,12 +101,6 @@ This branch (`kimi-web-desktop`) is the **web edition** of Kimi Code Desktop: th
 | **Best for** | a clean, chat-first desktop client | power users who live in tabs and the TUI |
 | **Released as** | tags `web-v*` → `Kimi-Code-Desktop-Web-*` artifacts | tags `v*` → `Kimi-Code-Desktop-*` artifacts |
 
-Both editions can be installed side by side — they share only your `~/.kimi-code` data, which belongs to the CLI, not to either app.
-
-## Requirements
-
-- **The Kimi Code CLI v2.0+** (`kimi`) installed and on `PATH` — [instructions](https://www.kimi.com/code/docs/en/). The app **detects it automatically**, including inside WSL on Windows; while it is missing the window shows the install hint and lights up the moment the CLI appears (no restart needed).
-
 ## Install — two different apps, pick yours
 
 This repo ships **two separate desktop apps** from two branches. They install side by side, have separate entries in your app list, and are downloaded with **different links** — pick the one you want:
@@ -57,58 +110,45 @@ This repo ships **two separate desktop apps** from two branches. They install si
 | **You get** | a chat window — the kimi web UI fullscreen | a terminal app — tabs, sessions, TUI + chat |
 | **Windows (PowerShell)** | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.ps1 \| iex` | `irm https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.ps1 \| iex` |
 | **Linux / macOS (bash)** | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/kimi-web-desktop/install-web.sh \| bash` | `curl -fsSL https://raw.githubusercontent.com/grafizum/kimi-cli-desktop/main/install.sh \| bash` |
-| **Manual** | [Web-edition assets](https://github.com/grafizum/kimi-cli-desktop/releases) (`…-Web-…` files) | [CLI-edition releases](https://github.com/grafizum/kimi-cli-desktop/releases?q=v1&expanded=true) (`v1.x` tags) |
+| **Manual** | [Releases](https://github.com/grafizum/kimi-cli-desktop/releases) — files named `…-Web-…` | [Releases](https://github.com/grafizum/kimi-cli-desktop/releases?q=v1&expanded=true) — `v1.x` tags, files without `-Web-` |
 
-Each script resolves **only its own edition's assets** — a Web install can never pull the terminal app and vice versa.
+Each installer resolves **only its own edition's assets** — a Web install can never pull the terminal app and vice versa.
 
-**Web edition from source:**
+**Requirements:** the [Kimi Code CLI v2.0+](https://www.kimi.com/code/docs/en/) on this machine (or in a WSL distro on Windows) — everything else is bundled. The packaged app needs no Node.js.
 
-```bash
-git clone -b kimi-web-desktop https://github.com/grafizum/kimi-cli-desktop.git
-cd kimi-cli-desktop && npm install && npm start
-```
+## Security & privacy
 
-## How it works
+- The chat server binds to `127.0.0.1` with a per-run token; it never leaves your machine. Prompts and code go where the CLI sends them — nothing is added by this app.
+- The webview may load only the CLI-served loopback URL, enforced in the main process; the guest runs sandboxed with no Node integration.
+- The app holds **no accounts, no telemetry, no analytics**. It stores four settings (CLI path, session-folder override, default permission mode, theme) in Electron's `userData`.
 
-```
-┌────────────────────────────────────────────────┐
-│  Kimi Code Desktop (Web edition)               │
-│                                                │
-│  ┌──────────────────────────────────────────┐  │
-│  │  Kimi chat UI                            │  │
-│  │  (served by the CLI, rendered unmodified)│  │
-│  └──────────────────────────────────────────┘  │
-│   ▲ sandboxed webview · loopback only          │
-└──────┼─────────────────────────────────────────┘
-       │ spawns & supervises
-       ▼
-  `kimi web --no-open`   ← the real CLI, on your machine
-       │
-       ▼
-  your ~/.kimi-code      ← your sessions, config, credentials (untouched)
-```
+## Troubleshooting
 
-- One `kimi web` server per app run, bound to `127.0.0.1` with a random token. The server never leaves your machine.
-- The webview may load **only** that CLI-served loopback URL — enforced in the main process, not the page.
-- The shell seeds its color scheme to match the app theme (light/dark) and skips the web UI's own first-run introduction — after that, every setting lives in the web UI itself, exactly as in a browser.
-- If the server crashes or the CLI is updated, the app restarts it; the web UI re-opens where you were.
+- **"Kimi Code CLI not found"** — install the CLI (the window copies the command) or point the `settings.json` key `kimiPath` at the binary. The app re-checks every few seconds; no restart needed.
+- **`server.token is too permissive (mode 755)`** — kimi refuses to serve if its token file has loose permissions (this can happen to files written through WSL network shares). Fix: `chmod 600 ~/.kimi-code/server.token` inside the distro, then retry.
+- **The chat never loads** — verify `kimi web --no-open` works in a plain terminal; the app only embeds what the CLI serves. A proxy that intercepts `127.0.0.1` will break the webview.
+- **Wrong model offered** — check the Models panel's `config.toml` content; model ids must match what the provider reports (`ollama list` for Ollama).
+- **Both editions installed** — that's fine; they're separate programs with separate folders. Remove either one from "Add or Remove Programs" (Windows) without touching the other.
 
 ## Build from source
 
-See the clone + build commands in [Install](#install--two-different-apps-pick-yours) above; `npm run dev` adds DevTools + console forwarding, `npm run smoke` is the test suite, `npm run dist` builds this OS's installers.
+```bash
+git clone -b kimi-web-desktop https://github.com/grafizum/kimi-cli-desktop.git
+cd kimi-cli-desktop
+npm install
+npm start          # run it
+npm run dev        # + DevTools and console forwarding
+npm run smoke      # dependency-free test suite
+npm run dist       # installers for this OS
+node scripts/make-web-shots.js   # regenerate the README screenshots (demo content)
+```
 
 ## Releasing
 
 ```bash
-git tag web-v1.0.0 && git push origin web-v1.0.0
+git tag web-v1.0.2 && git push origin web-v1.0.2
 ```
-GitHub Actions builds Windows (NSIS + portable), Linux (AppImage x64/arm64) and macOS (dmg x64/arm64) artifacts — all prefixed `Kimi-Code-Desktop-Web-` — and attaches them to the tag's release. The CLI edition (`main` branch) releases with plain `v*` tags and never collides.
-
-## Troubleshooting
-
-- **"Kimi Code CLI not found"** — install the CLI (button in the window copies the command), or point Settings-free style: the app re-checks every few seconds and also honors an explicit path via `~/.config`-style settings file (`settings.json` → `kimiPath`).
-- **The chat never loads** — make sure `kimi web --no-open` works in a terminal; the app only embeds what the CLI serves. A corporate proxy that intercepts `127.0.0.1` can break the webview.
-- **Two apps installed** — they are separate programs; the CLI edition installs to its own folder. Uninstall either one from "Add or Remove Programs" without touching the other.
+GitHub Actions builds Windows (NSIS + portable), Linux (AppImage x64/arm64) and macOS (dmg x64/arm64) — all prefixed `Kimi-Code-Desktop-Web-` — and attaches them to the tag's release. The CLI edition releases with plain `v*` tags; the tracks never collide.
 
 ## Legal notice
 
