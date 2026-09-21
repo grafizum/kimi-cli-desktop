@@ -741,6 +741,45 @@ const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PAT
     'permission-mode radios stay hidden behind the custom card state');
 
   // -------------------------------------------------------------------------
+  // 8n. Embedded Kimi Web (`kimi web`) — arg building, banner parsing and
+  //     the webview URL guard, unit-tested from the pure module.
+  // -------------------------------------------------------------------------
+  console.log('\n[web-session] embedded Kimi Web helpers');
+  const webSession = require('../src/web-session');
+
+  ok(JSON.stringify(webSession.buildWebArgs({})) === JSON.stringify(['web', '--no-open']),
+    'web args: plain server start is `web --no-open`');
+  ok(JSON.stringify(webSession.buildWebArgs({ resumeId: 'abc', mode: 'yolo' }))
+    === JSON.stringify(['--session', 'abc', '--yolo', 'web', '--no-open']),
+    'web args: --session / mode flags go BEFORE the web subcommand (root options)',
+    JSON.stringify(webSession.buildWebArgs({ resumeId: 'abc', mode: 'yolo' })));
+  ok(JSON.stringify(webSession.buildWebArgs({ mode: 'plan' }))
+    === JSON.stringify(['--plan', 'web', '--no-open']),
+    'web args: plan mode maps to the root --plan flag');
+
+  const banner = [
+    '  ▐█▛█▛█▌  Kimi server ready  2.0.2',
+    '  Local:    http://127.0.0.1:58627/#token=JUdXb5eIGip7b-yks7wO-vSeaU',
+    '  Token:    JUdXb5eIGip7b-yks7wO-vSeaU',
+  ].join('\n');
+  const parsed = webSession.parseServerUrl(banner);
+  ok(!!parsed && parsed.url === 'http://127.0.0.1:58627/#token=JUdXb5eIGip7b-yks7wO-vSeaU',
+    'banner: the Local URL is extracted from the real server output shape', JSON.stringify(parsed));
+  ok(!!parsed && parsed.token === 'JUdXb5eIGip7b-yks7wO-vSeaU', 'banner: the token is parsed');
+  ok(!!parsed && parsed.port === '58627', 'banner: the port is parsed');
+  ok(webSession.parseServerUrl('Local:    http://127.0.0.1:58627/') === null,
+    'banner: a URL without a token is not accepted');
+  ok(webSession.isServerReadyLine('Kimi server ready 2.0.2'), 'banner: the ready line is recognised');
+
+  ok(webSession.isAllowedWebUrl('http://127.0.0.1:58627/#token=x'), 'url guard: loopback + token passes');
+  ok(webSession.isAllowedWebUrl('http://localhost:58627/#token=x'), 'url guard: localhost passes');
+  ok(!webSession.isAllowedWebUrl('http://10.0.0.5:58627/#token=x'), 'url guard: LAN addresses are refused');
+  ok(!webSession.isAllowedWebUrl('https://evil.example/#token=x'), 'url guard: remote hosts are refused');
+  ok(!webSession.isAllowedWebUrl('http://127.0.0.1:58627/'), 'url guard: loopback WITHOUT a token is refused');
+  ok(!webSession.isAllowedWebUrl('file:///etc/passwd'), 'url guard: non-http schemes are refused');
+  ok(!webSession.isAllowedWebUrl('not a url'), 'url guard: garbage is refused');
+
+  // -------------------------------------------------------------------------
   // 9. Terminal plumbing — the app's whole reason to exist
   // -------------------------------------------------------------------------
   // Drives the real src/pty.js against the fake kimi CLI in an actual

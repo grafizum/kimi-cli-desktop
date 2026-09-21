@@ -9,6 +9,7 @@ const kimiDetect = require('./src/kimi-detect');
 const sessions = require('./src/sessions');
 const settingsStore = require('./src/settings');
 const ptyManager = require('./src/pty');
+const webSession = require('./src/web-session');
 
 // --- Startup self-check -----------------------------------------------------
 // Two environments kill Chromium before the window exists, both with the same
@@ -274,7 +275,38 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false, // preload uses require() to load only ipcRenderer
+      // The chat view embeds the CLI's own web UI (`kimi web`) per session tab.
+      // Off by default in Electron; every URL a webview may load is validated
+      // in the will-attach-webview guard above.
+      webviewTag: true,
     },
+  });
+
+  // The renderer embeds the CLI's own web UI (`kimi web`) in a <webview> per
+  // chat session. Everything it may load is decided here, not in the page:
+  //   - only the CLI's loopback server URL (token came from the app's own
+  //     capture of the server banner — a compromised renderer has no other
+  //     origin that would pass isAllowedWebUrl);
+  //   - the server gets NO node integration and a fresh session per tab;
+  //   - popups/target=_blank hand the link to the OS browser instead.
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('will-attach-webview', (_ev, webPreferences, params) => {
+      if (!webSession.isAllowedWebUrl(params.src)) {
+        console.error('[webview] refused to attach a webview loading a non-loopback URL');
+        _ev.preventDefault();
+        return;
+      }
+      delete webPreferences.nodeIntegration;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      webPreferences.nodeIntegrationInSubFrames = false;
+    });
+    if (contents.getType() === 'webview') {
+      contents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:\/\//.test(url)) openWithOs(url);
+        return { action: 'deny' };
+      });
+    }
   });
 
   const emitMaximized = () => send('window:maximized-changed', !!(mainWindow && mainWindow.isMaximized()));
@@ -646,6 +678,8 @@ function registerIpc() {
   ipcMain.handle('app:reload-window', () => {
     for (const s of sessionsByTab.values()) s.kill();
     sessionsByTab.clear();
+    for (const srv of webServersByTab.values()) srv.kill();
+    webServersByTab.clear();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.reload();
       return { ok: true };
@@ -697,6 +731,58 @@ function registerIpc() {
     }
     // Never hand a Windows path to `cd` inside the distro.
     if (!opts.resumeId && isWslMode() && isWindowsPath(cwd)) cwd = detection.wsl.home;
+    // Chat view: the same CLI session hosted by the CLI's OWN web server
+    // (`kimi web`) instead of a PTY — Moonshot's genuine chat UI, embedded.
+    // Works in both modes: native spawns run the binary directly (a .cmd shim
+    // goes through cmd.exe), WSL mode wraps the same argv in `bash -lc` inside
+    // the distro — the server then listens on Windows' 127.0.0.1 either way.
+    if (opts.web) {
+      if (!opts.resumeId && !isWslMode()) {
+        try {
+          // New chat sessions only — a resume cwd is never swapped (see
+          // prepareResume): kimi only resumes from the original directory.
+          if (!opts.resumeId && !fs.existsSync(cwd)) cwd = os.homedir();
+        } catch {
+          cwd = os.homedir();
+        }
+      }
+      const srv = webSession.startWebServer({
+        // A view switch passes the tab's existing id: the backend adopts it so
+        // the tab keeps ONE stable identity across Chat ⇄ Terminal for its
+        // whole life (kill/stop lookups stay trivial).
+        id: (typeof opts.tabId === 'string' && opts.tabId) ? opts.tabId : webSession.newId(),
+        binary: detection.path,
+        args: webSession.buildWebArgs({ mode: opts.mode || 'default', resumeId: opts.resumeId || '' }),
+        cwd,
+        env: currentEnv(),
+        kimiCodeHome: linuxKimiCodeHome(),
+        buildSpawn: kimiDetect.buildSpawn,
+        wsl: isWslMode() ? detection.wsl : null,
+      });
+      webServersByTab.set(srv.id, srv);
+      // A chat server that dies (crash, port hijack, CLI exit) must reach the
+      // tab as an event, the same way a PTY exit does.
+      srv.on('exit', ({ code, signal }) => {
+        send('web:exit', { tabId: srv.id, code, signal });
+      });
+      const result = await srv.promise;
+      if (!result.ok || !webSession.isAllowedWebUrl(result.url)) {
+        webServersByTab.delete(srv.id);
+        srv.kill();
+        return { error: 'web-server-failed', detail: String(result.log || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'the server did not report a URL' };
+      }
+      return {
+        tabId: srv.id,
+        kind: 'web',
+        url: result.url,
+        pid: srv.pid,
+        binary: detection.path,
+        kimiVersion: detection.version,
+        cwd,
+        mode: opts.mode || 'default',
+        resumeId: opts.resumeId || null,
+      };
+    }
     if (isWslMode()) {
       // Working directory is a Linux path inside WSL — no Windows existence check.
       session = ptyManager.spawnWslSession({
@@ -727,6 +813,9 @@ function registerIpc() {
       });
     }
 
+    // A view switch passes the tab's existing id: adopt it so the tab keeps
+    // ONE stable identity across Chat ⇄ Terminal (see the web path above).
+    if (typeof opts.tabId === 'string' && opts.tabId) session.id = opts.tabId;
     session.on('data', (data) => send('pty:data', { tabId: session.id, data }));
     session.on('exit', ({ exitCode, signal }) => {
       send('pty:exit', { tabId: session.id, exitCode, signal });
@@ -747,6 +836,16 @@ function registerIpc() {
     };
   });
 
+  // Stop a chat session's `kimi web` server (view switch to terminal, tab
+  // close). Never used to re-launch: the caller starts a fresh server if needed.
+  ipcMain.handle('session:stop-web', (_e, tabId) => {
+    const srv = webServersByTab.get(tabId);
+    if (!srv) return false;
+    srv.kill();
+    webServersByTab.delete(tabId);
+    return true;
+  });
+
   ipcMain.on('session:write', (_e, { tabId, data }) => {
     const s = sessionsByTab.get(tabId);
     if (s) s.write(data);
@@ -758,13 +857,23 @@ function registerIpc() {
   });
 
   ipcMain.handle('session:kill', (_e, tabId) => {
+    let killed = false;
     const s = sessionsByTab.get(tabId);
     if (s) {
       s.kill();
       sessionsByTab.delete(tabId);
-      return true;
+      killed = true;
     }
-    return false;
+    // Chat tabs: killing the tab means stopping its web server too. Both maps
+    // are always consulted — a tab has exactly one backend, but the caller
+    // only knows the tab id.
+    const srv = webServersByTab.get(tabId);
+    if (srv) {
+      srv.kill();
+      webServersByTab.delete(tabId);
+      killed = true;
+    }
+    return killed;
   });
 
   // `kimi export <id> -o <path> -y` — the CLI writes the ZIP itself; we just ask
@@ -960,6 +1069,8 @@ function registerIpc() {
 }
 
 const sessionsByTab = new Map();
+// Chat sessions: tabId -> the `kimi web` server handle behind that tab.
+const webServersByTab = new Map();
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -1012,6 +1123,8 @@ if (!gotLock) {
   app.on('before-quit', () => {
     for (const s of sessionsByTab.values()) s.kill();
     sessionsByTab.clear();
+    for (const srv of webServersByTab.values()) srv.kill();
+    webServersByTab.clear();
   });
 
 }

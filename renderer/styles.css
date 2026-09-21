@@ -41,6 +41,7 @@
   --accent-2: #DFDFDF;
   --accent-soft: rgba(223, 223, 223, 0.10);
   --accent-text: #DFDFDF;
+  --accent-ink: #181818; /* readable ink on top of --accent (light gray in dark theme) */
   --green: #8BC98A;
   --red: #E8776F;
   --yellow: #E0B463;
@@ -91,6 +92,7 @@
   --accent-2: #2A2A2A;
   --accent-soft: rgba(24, 24, 24, 0.06);
   --accent-text: #181818;
+  --accent-ink: #EFEFEF; /* readable ink on top of --accent (near-black in light theme) */
   --green: #1F7A34;
   --red: #B3261E;
   --yellow: #8A5A00;
@@ -929,6 +931,77 @@ body:not(.term-classic) .tab.active {
 @keyframes pl-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
 @keyframes pl-in { from { opacity: 0; } }
 @keyframes pl-out { to { opacity: 0; } }
+
+/* ------------------------------------------------------------------ */
+/* Chat view — the CLI's own web UI, embedded                           */
+/* ------------------------------------------------------------------ */
+/* A chat tab carries TWO surfaces inside its pane: the <webview> (Kimi's
+   genuine chat UI, served by the tab's own `kimi web` server) and the xterm
+   underneath. applyTabView() shows exactly one; the transition on the webview
+   keeps a view switch from flashing a half-painted frame. */
+.term-pane webview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--terminal-bg);
+  transition: opacity 0.12s ease;
+}
+
+/* Chat ⇄ Terminal switch, pinned top-right of the pane. The card aesthetic:
+   joined segment buttons, active side filled with the accent. */
+.view-switch {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 6;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.vs-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.vs-btn:hover { color: var(--text); background: var(--bg-hover); }
+.on-chat .vs-btn[data-view="chat"],
+.on-terminal .vs-btn[data-view="terminal"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Chat pane failure card (see showChatError in app.js). */
+.chat-error {
+  position: absolute;
+  top: 52px;
+  right: 14px;
+  left: 14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.chat-error-title { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.chat-error-text { font-size: 12px; color: var(--text-dim); }
+.chat-error-actions { display: flex; gap: 8px; margin-top: 4px; }
 
 .exit-chip {
   position: absolute;

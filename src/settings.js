@@ -20,6 +20,7 @@ const DEFAULTS = {
   sidebarCollapsed: false, // true = sidebar hidden entirely
   sessionGroupBy: 'project', // 'project' (folder) | 'date'
   terminalStyle: 'panel', // 'panel' (framed card) | 'classic' (edge-to-edge)
+  sessionView: 'chat', // 'chat' (embedded Kimi Web) | 'terminal' (the PTY TUI)
   collapsedGroups: [], // group keys the user folded shut, restored on next launch
 };
 
@@ -54,7 +55,8 @@ function sanitizePatch(patch) {
   const out = {};
   for (const [k, v] of Object.entries(patch || {})) {
     if (!(k in DEFAULTS)) continue;
-    if (typeof v === 'string' && k !== 'defaultMode' && k !== 'theme' && k !== 'fontFamily') {
+    if (typeof v === 'string' && k !== 'defaultMode' && k !== 'theme' && k !== 'fontFamily'
+      && k !== 'sessionView' && k !== 'terminalStyle') {
       out[k] = v.trim();
     } else {
       out[k] = v;

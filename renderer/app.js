@@ -56,6 +56,8 @@ const state = {
   sessions: [],
   filter: '',
   tabs: new Map(), // tabId -> tab record
+  // tabId -> the <webview> hosting that tab's Kimi Web chat (chat view only).
+  webServers: new Map(),
   // PTY output/exit that arrived before its tab record existed (see onPtyData).
   pendingPty: new Map(), // tabId -> { chunks: string[], exitCode: number|null }
   activeTabId: null,
@@ -361,6 +363,33 @@ async function init() {
       if (!pending) { pending = { chunks: [], exitCode: null }; state.pendingPty.set(tabId, pending); }
       pending.exitCode = exitCode;
     }
+    refreshSessions();
+  });
+
+  // Chat sessions end when their `kimi web` server dies — mirror the PTY exit
+  // treatment (exit chip on the pane, tab badge, history refresh).
+  api.onWebExit(({ tabId, code }) => {
+    const tab = state.tabs.get(tabId);
+    if (!tab) return;
+    state.webServers.delete(tabId);
+    if (tab.view !== 'chat' || !tab.webview) return;
+    tab.status = 'exited';
+    tab.exitCode = code;
+    tab.tabEl.classList.add('exited');
+    tab.tabEl.querySelector('.tab-status-badge').textContent = `ended (${code == null ? '?' : code})`;
+    const chip = document.createElement('div');
+    chip.className = 'exit-chip';
+    chip.innerHTML = `
+      <span>Chat session ended${code == null ? '' : ` — exit code ${code}`}</span>
+      <button class="btn ghost">Restart chat</button>
+      <button class="btn ghost">Close tab</button>`;
+    const [btnRestart, btnClose] = chip.querySelectorAll('button');
+    btnRestart.addEventListener('click', async () => {
+      chip.remove();
+      await restartChatServer(tab);
+    });
+    btnClose.addEventListener('click', () => closeTab(tab));
+    tab.pane.appendChild(chip);
     refreshSessions();
   });
 
@@ -675,8 +704,9 @@ async function resumeSession(s) {
     resumeId: s.id,
     kind: 'resume',
     label,
+    web: (state.settings.sessionView || 'chat') === 'chat',
   });
-  if (tab) toast(`Resuming session — ${label}`, 'ok');
+  if (tab) toast(tab.view === 'chat' ? `Opening in Kimi chat — ${label}` : `Resuming session — ${label}`, 'ok');
 }
 
 // ---------------------------------------------------------------------------
@@ -687,6 +717,8 @@ async function resumeSession(s) {
 //   resume  → kimi --session <id>
 //   fork    → kimi fork <id> -y
 //   export  → kimi export <id> -o <path> -y
+// Resumes open in the configured default view: the embedded Kimi chat (the
+// CLI's own web UI) or the terminal TUI — switchable per tab at any time.
 // There is deliberately no delete/archive entry: `kimi session` only ships a
 // `list` subcommand, so neither exists on the CLI surface.
 
@@ -840,6 +872,8 @@ const LOADER_LABELS = {
   fork: 'Forking session',
   quick: 'Running task',
   login: 'Starting sign-in',
+  chat: 'Starting Kimi chat',
+  'chat-resume': 'Opening session in Kimi chat',
 };
 
 function createPaneLoader(pane, kind) {
@@ -899,6 +933,12 @@ function hideDropOverlay(pane) {
 // (e.g. images dragged from a web page, which have no real path).
 async function dropFilesAsAttachments(tab, dataTransfer) {
   if (!dataTransfer) return;
+  if (tab.view === 'chat') {
+    // In chat view the web UI accepts files natively (its own upload flow) —
+    // the terminal path-writing mechanism has nothing to write into.
+    toast('The chat view takes files directly — drop them onto the chat input.', 'ok');
+    return;
+  }
   const files = [];
   const items = [...(dataTransfer.items || [])];
   const entries = items.map((it) => (typeof it.webkitGetAsEntry === 'function' ? it.webkitGetAsEntry() : null));
@@ -963,7 +1003,7 @@ async function dropFilesAsAttachments(tab, dataTransfer) {
   }
 }
 
-function createTab({ id, label, kind }) {
+function createTab({ id, label, kind, web, url }) {
   const kindIcon = ico(kind === 'resume' ? 'resume' : kind === 'fork' ? 'fork' : kind === 'quick' ? 'bolt' : kind === 'login' ? 'key' : 'dot');
 
   const tabEl = document.createElement('div');
@@ -990,12 +1030,52 @@ function createTab({ id, label, kind }) {
   term.loadAddon(search);
   term.loadAddon(new WebLinksAddon.WebLinksAddon((_e, uri) => openExternalSafe(uri, 'link')));
 
+  // Chat tabs embed the CLI's own web UI (`kimi web`) in a <webview>. The
+  // terminal object still exists underneath so switching views needs no
+  // re-creation — the PTY behind it, though, is only spawned when the user
+  // actually switches to Terminal view (one conversation, one live process).
+  let webview = null;
+  if (web && url) {
+    webview = document.createElement('webview');
+    webview.setAttribute('src', url);
+    // persist: keeps kimi's UI preferences (theme, etc.) across sessions of
+    // the app; the main process validates the src against its loopback guard.
+    webview.setAttribute('partition', 'persist:kimiweb');
+    webview.style.display = 'none';
+    pane.appendChild(webview);
+  }
+
   const tab = {
-    id, kind, label, term, fit, search,
+    id, kind, label, term, fit, search, webview,
+    view: webview ? 'chat' : 'terminal',
+    switching: false,
     tabEl, pane, status: 'running', exitCode: null,
     sentCols: null, sentRows: null,
     meta: null, loader: null, loaderTimer: null,
   };
+  if (webview) {
+    state.webServers.set(id, webview);
+    webview.addEventListener('dom-ready', () => {
+      if (tab.view === 'chat') {
+        clearPaneLoader(tab); // the chat UI is alive
+        try { webview.focus(); } catch { /* not focusable yet */ }
+      }
+    });
+    webview.addEventListener('did-fail-load', (e) => {
+      if (!e.isMainFrame) return; // subframe misses are normal
+      if (tab.view !== 'chat') return;
+      clearPaneLoader(tab);
+      showChatError(tab, e.errorDescription || 'The chat UI failed to load.');
+    });
+    webview.addEventListener('render-process-gone', () => {
+      if (tab.view !== 'chat') return;
+      showChatError(tab, 'The chat UI crashed. Switch to Terminal or restart it.');
+    });
+    // Kimi's UI titles its page after the session — let the tab follow it.
+    webview.addEventListener('page-title-updated', (e) => {
+      if (e.title && tab.view === 'chat') setTabLabel(tab, e.title);
+    });
+  }
 
   term.open(pane);
   tab.loader = createPaneLoader(pane, kind);
@@ -1046,6 +1126,7 @@ function createTab({ id, label, kind }) {
 
   pane.addEventListener('contextmenu', (e) => {
     if (isMac()) return;
+    if (tab.view === 'chat') return; // the chat UI keeps its own menu
     e.preventDefault();
     if (term.hasSelection()) {
       copyToClipboard(term.getSelection());
@@ -1075,6 +1156,7 @@ function createTab({ id, label, kind }) {
   // Paste: images on the clipboard become attachments too (saved to a temp
   // file, path written into the session) when no text is present.
   pane.addEventListener('paste', (e) => {
+    if (tab.view === 'chat') return; // the chat UI handles its own paste
     const dt = e.clipboardData;
     if (!dt) return; // let the terminal handle plain-text paste
     const imgs = [...(dt.items || [])].filter((it) => it.kind === 'file' && it.type.startsWith('image/'));
@@ -1101,6 +1183,24 @@ function createTab({ id, label, kind }) {
       reader.readAsDataURL(blob);
     });
   });
+
+  // Chat ⇄ Terminal switch. Only offered where both views make sense: chat
+  // tabs, and terminal tabs the user started as a session (quick tasks, login
+  // and forks are one-shot terminal flows).
+  if (webview || kind === 'interactive' || kind === 'resume') {
+    const seg = document.createElement('div');
+    seg.className = 'view-switch';
+    seg.setAttribute('role', 'tablist');
+    seg.innerHTML = `
+      <button class="vs-btn" role="tab" data-view="chat" title="Chat view — Kimi's own chat UI, served by the CLI">Chat</button>
+      <button class="vs-btn" role="tab" data-view="terminal" title="Terminal view — the kimi TUI">Terminal</button>`;
+    seg.addEventListener('click', (e) => {
+      const btn = e.target.closest('.vs-btn');
+      if (btn) setTabView(tab, btn.dataset.view);
+    });
+    pane.appendChild(seg);
+    tab.viewSwitch = seg;
+  }
 
   try {
     search.onDidChangeResults(({ resultIndex, resultCount }) => {
@@ -1130,8 +1230,204 @@ function createTab({ id, label, kind }) {
   }
 
   setTabLabel(tab, label);
+  applyTabView(tab);
   activateTab(id);
   return tab;
+}
+
+// ---------------------------------------------------------------------------
+// Chat ⇄ Terminal views of the same session. Exactly one process owns the
+// conversation at a time: the `kimi web` server (chat) or the PTY (terminal).
+// Switching stops the current backend and resumes the SAME session id in the
+// other one — the conversation never forks, only its face changes.
+// ---------------------------------------------------------------------------
+
+function applyTabView(tab) {
+  const chat = tab.view === 'chat' && tab.webview;
+  if (tab.webview) tab.webview.style.display = chat ? 'block' : 'none';
+  if (tab.term.element) tab.term.element.style.display = chat ? 'none' : 'block';
+  if (tab.viewSwitch) {
+    tab.viewSwitch.classList.toggle('on-chat', chat);
+    tab.viewSwitch.classList.toggle('on-terminal', !chat);
+    tab.viewSwitch.style.display = tab.status === 'exited' ? 'none' : '';
+  }
+}
+
+async function setTabView(tab, view) {
+  if (!tab || tab.switching || tab.view === view) return;
+  const prevView = tab.view;
+  if (view === 'chat' && !tab.webview) {
+    // A terminal-only tab gains its chat surface by starting a chat server.
+    // The conversation cannot carry over — the CLI assigns session ids itself
+    // and the TUI owns the current one — so this starts a NEW conversation in
+    // the same workspace, clearly labelled.
+    tab.switching = true;
+    tab.loader = createPaneLoader(tab.pane, 'chat');
+    tab.loaderTimer = setTimeout(() => clearPaneLoader(tab), SESSION_LOADER_FAILSAFE_MS);
+    try {
+      const res = await api.startSession({
+        web: true, tabId: tab.id,
+        cwd: tab.meta ? tab.meta.cwd : '',
+        mode: tab.meta ? tab.meta.mode : 'default',
+      });
+      if (res.error) throw new Error(res.detail || res.error);
+      // Flip the view BEFORE stopping the old backend: the kill fires an exit
+      // event, and the guards in markExited / onWebExit consult tab.view.
+      tab.view = 'chat';
+      applyTabView(tab);
+      if (tab.status === 'running') await api.killSession(tab.id);
+      tab.status = 'running';
+      tab.meta = { ...tab.meta, ...res };
+      tab.webview = document.createElement('webview');
+      tab.webview.setAttribute('src', res.url);
+      tab.webview.setAttribute('partition', 'persist:kimiweb');
+      tab.webview.style.display = 'none';
+      tab.pane.appendChild(tab.webview);
+      wireWebview(tab);
+      state.webServers.set(tab.id, tab.webview);
+      applyTabView(tab);
+      toast('Chat view started a new conversation in this workspace', 'ok');
+    } catch (err) {
+      tab.view = prevView;
+      applyTabView(tab);
+      toast(`Chat view failed: ${err.message}`, 'error');
+    } finally {
+      tab.switching = false;
+      clearPaneLoader(tab);
+    }
+    return;
+  }
+
+  tab.switching = true;
+  // A tab whose backend had died wears the ended state (badge, chip) — a
+  // successful switch is a fresh start for the same tab, so clear it.
+  tab.tabEl.classList.remove('exited');
+  tab.tabEl.querySelector('.tab-status-badge').textContent = '';
+  tab.pane.querySelectorAll('.exit-chip, .chat-error').forEach((el) => el.remove());
+  tab.loader = createPaneLoader(tab.pane, view === 'chat'
+    ? (tab.meta && tab.meta.resumeId ? 'chat-resume' : 'chat')
+    : 'resume');
+  tab.loaderTimer = setTimeout(() => clearPaneLoader(tab), SESSION_LOADER_FAILSAFE_MS);
+  try {
+    // Flip the view BEFORE stopping the old backend: the kill fires an exit
+    // event, and the guards in markExited / onWebExit consult tab.view.
+    tab.view = view;
+    applyTabView(tab);
+    if (view === 'chat') {
+      // Terminal → Chat: stop the PTY, resume the same session in Kimi Web.
+      if (tab.status === 'running') await api.killSession(tab.id);
+      const res = await api.startSession({
+        web: true, tabId: tab.id,
+        cwd: tab.meta ? tab.meta.cwd : '',
+        mode: tab.meta ? tab.meta.mode : 'default',
+        resumeId: (tab.meta && tab.meta.resumeId) || '',
+      });
+      if (res.error) throw new Error(res.detail || res.error);
+      tab.status = 'running';
+      tab.meta = { ...tab.meta, ...res };
+      tab.webview.setAttribute('src', res.url);
+    } else {
+      // Chat → Terminal: killSession stops the tab's web server, then the
+      // same session is resumed in the PTY. The terminal object already
+      // exists on the tab, so no re-creation is needed.
+      if (tab.status === 'running') await api.killSession(tab.id);
+      const res = await api.startSession({
+        tabId: tab.id,
+        cwd: tab.meta ? tab.meta.cwd : '',
+        mode: tab.meta ? tab.meta.mode : 'default',
+        resumeId: (tab.meta && tab.meta.resumeId) || '',
+      });
+      if (res.error) throw new Error(res.detail || res.error);
+      tab.status = 'running';
+      tab.meta = { ...tab.meta, ...res };
+      requestAnimationFrame(() => {
+        try { tab.fit.fit(); sendResize(tab); tab.term.focus({ preventScroll: true }); } catch { /* hidden */ }
+      });
+    }
+  } catch (err) {
+    tab.view = prevView;
+    applyTabView(tab);
+    toast(`Could not switch view: ${err.message}`, 'error');
+  } finally {
+    tab.switching = false;
+    clearPaneLoader(tab);
+  }
+}
+
+// Shared webview event wiring for tabs that gain their webview later (setTabView).
+function wireWebview(tab) {
+  const webview = tab.webview;
+  if (!webview) return;
+  webview.addEventListener('page-title-updated', (e) => {
+    if (e.title && tab.view === 'chat') setTabLabel(tab, e.title);
+  });
+  webview.addEventListener('dom-ready', () => {
+    if (tab.view === 'chat') {
+      clearPaneLoader(tab);
+      try { webview.focus(); } catch { /* not focusable yet */ }
+    }
+  });
+  webview.addEventListener('did-fail-load', (e) => {
+    if (!e.isMainFrame || tab.view !== 'chat') return;
+    clearPaneLoader(tab);
+    showChatError(tab, e.errorDescription || 'The chat UI failed to load.');
+  });
+  webview.addEventListener('render-process-gone', () => {
+    if (tab.view !== 'chat') return;
+    showChatError(tab, 'The chat UI crashed. Switch to Terminal or restart it.');
+  });
+}
+
+// Inline, dismissible error card for a chat pane that cannot load.
+function showChatError(tab, message) {
+  const old = tab.pane.querySelector('.chat-error');
+  if (old) old.remove();
+  const card = document.createElement('div');
+  card.className = 'chat-error';
+  card.innerHTML = `
+    <div class="chat-error-title">Chat view unavailable</div>
+    <div class="chat-error-text"></div>
+    <div class="chat-error-actions">
+      <button class="btn ghost" data-act="terminal">Use Terminal view</button>
+      <button class="btn ghost" data-act="dismiss">Dismiss</button>
+    </div>`;
+  card.querySelector('.chat-error-text').textContent = String(message || '');
+  card.querySelector('[data-act="terminal"]').addEventListener('click', () => {
+    card.remove();
+    setTabView(tab, 'terminal');
+  });
+  card.querySelector('[data-act="dismiss"]').addEventListener('click', () => card.remove());
+  tab.pane.appendChild(card);
+}
+
+// Restart a chat session whose server died (exit-chip button).
+async function restartChatServer(tab) {
+  if (!tab || tab.switching) return;
+  tab.switching = true;
+  tab.status = 'running';
+  tab.tabEl.classList.remove('exited');
+  tab.tabEl.querySelector('.tab-status-badge').textContent = '';
+  tab.pane.querySelectorAll('.exit-chip').forEach((el) => el.remove());
+  tab.loader = createPaneLoader(tab.pane, 'chat-resume');
+  tab.loaderTimer = setTimeout(() => clearPaneLoader(tab), SESSION_LOADER_FAILSAFE_MS);
+  try {
+    const res = await api.startSession({
+      web: true, tabId: tab.id,
+      cwd: tab.meta ? tab.meta.cwd : '',
+      mode: tab.meta ? tab.meta.mode : 'default',
+      resumeId: (tab.meta && tab.meta.resumeId) || '',
+    });
+    if (res.error) throw new Error(res.detail || res.error);
+    tab.meta = { ...tab.meta, ...res };
+    if (tab.webview) tab.webview.setAttribute('src', res.url);
+  } catch (err) {
+    tab.status = 'exited';
+    tab.tabEl.classList.add('exited');
+    toast(`Chat could not restart: ${err.message}`, 'error');
+  } finally {
+    tab.switching = false;
+    clearPaneLoader(tab);
+  }
 }
 
 function customKeyHandler(tab, e) {
@@ -1183,10 +1479,13 @@ function activateTab(id) {
     t.tabEl.classList.toggle('active', active);
     t.pane.style.display = active ? 'block' : 'none';
     if (active) {
-      // Focus without stealing the mouse selection the user just made in the
-      // terminal (click a tab mid-selection must not deselect). Focus is only
-      // forced when the click came from the keyboard or the tab itself.
-      t.term.focus({ preventScroll: true });
+      // Focus the surface the user is actually looking at: the webview in chat
+      // view, the terminal otherwise. Never steal focus from app inputs.
+      if (t.view === 'chat' && t.webview) {
+        try { t.webview.focus(); } catch { /* not ready */ }
+      } else {
+        t.term.focus({ preventScroll: true });
+      }
       requestAnimationFrame(() => {
         try {
           t.fit.fit();
@@ -1226,6 +1525,8 @@ async function closeTab(tab) {
   if (tab.loaderTimer) { clearTimeout(tab.loaderTimer); tab.loaderTimer = null; }
   if (tab.status === 'running') {
     await api.killSession(tab.id);
+    await api.stopWebSession(tab.id); // no-op for terminal tabs
+    state.webServers.delete(tab.id);
   }
   tab.ro.disconnect();
   tab.term.dispose();
@@ -1245,6 +1546,11 @@ function closeActiveTab() {
 }
 
 function markExited(tab, exitCode) {
+  // A chat tab's PTY exit is almost always the deliberate kill of a Chat ⇄
+  // Terminal view switch — the conversation itself lives on in the `kimi web`
+  // server. Never paint an exit chip over a live chat. (A real chat failure
+  // arrives through web:exit instead.)
+  if (tab.view === 'chat' && tab.webview) return;
   clearPaneLoader(tab); // never leave the cover over an exit chip
   tab.status = 'exited';
   tab.exitCode = exitCode;
@@ -1293,7 +1599,7 @@ async function ensureKimi() {
   return false;
 }
 
-async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, command, argv }) {
+async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, command, argv, web, tabId }) {
   const res = await api.startSession({
     cwd,
     mode: mode || 'default',
@@ -1303,11 +1609,20 @@ async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, com
     // Literal kimi argv (e.g. `fork <id> -y`) for CLI subcommands that are not
     // session flags — the main process uses it as-is instead of buildArgs().
     argv: Array.isArray(argv) ? argv.map(String) : [],
+    // Chat view: the CLI's own `kimi web` server instead of a PTY. tabId
+    // re-keys an existing tab when the view switches (same id, new backend).
+    web: web === true,
+    tabId: tabId || '',
   });
   if (res.error) {
     if (res.error === 'kimi-not-found') {
       toast('Kimi Code CLI was not found. Install it or set the path in Settings.', 'error');
       renderWelcome(true);
+    } else if (res.error === 'web-server-failed') {
+      // The CLI's web server never came up (old CLI, port clash, crash).
+      // Fall back to the terminal TUI so the user is never left with nothing.
+      toast(`Kimi chat could not start (${res.detail || 'no URL'}). Falling back to the terminal.`, 'error');
+      return startSession({ cwd, mode, resumeId, quickPrompt, kind, label, command, argv, web: false });
     } else if (res.error === 'resume-cancelled') {
       // The user declined to recreate the session's folder — nothing to report.
     } else if (res.error === 'resume-cwd-unknown' || res.error === 'resume-cwd-missing') {
@@ -1323,7 +1638,13 @@ async function startSession({ cwd, mode, resumeId, quickPrompt, kind, label, com
     }
     return null;
   }
-  const tab = createTab({ id: res.tabId, label: label || defaultLabel(kind, res), kind: kind || 'interactive' });
+  const tab = createTab({
+    id: res.tabId,
+    label: label || defaultLabel(kind, res),
+    kind: kind || 'interactive',
+    web: res.kind === 'web',
+    url: res.url || '',
+  });
   tab.meta = res;
   return tab;
 }
@@ -1526,6 +1847,9 @@ async function confirmNewSession() {
     mode,
     kind: 'interactive',
     label: `New session${state.nsCwd ? ` · ${projectName(state.nsCwd)}` : ''}`,
+    // New sessions open in the configured default view — the embedded Kimi
+    // chat by default, the classic TUI when Terminal is chosen in Settings.
+    web: (state.settings.sessionView || 'chat') === 'chat',
   });
   if (tab) {
     state.settings.defaultCwd = state.nsCwd;
@@ -1857,6 +2181,7 @@ async function openSettingsModal(tab) {
   $('#st-font-size').value = s.fontSize || 13;
   $('#st-scrollback').value = s.scrollback || 10000;
   $('#st-term-style').value = s.terminalStyle === 'classic' ? 'classic' : 'panel';
+  $('#st-session-view').value = (s.sessionView === 'terminal') ? 'terminal' : 'chat';
   $('#st-font-family').value = s.fontFamily || '';
   setThemeRadios(s.theme || 'dark');
   const ver = state.kimi && state.kimi.found
@@ -1896,6 +2221,7 @@ async function saveSettingsFromModal() {
     scrollback: clampNum($('#st-scrollback').value, 1000, 100000, 10000),
     fontFamily: $('#st-font-family').value.trim(),
     terminalStyle: $('#st-term-style').value === 'classic' ? 'classic' : 'panel',
+    sessionView: $('#st-session-view').value === 'terminal' ? 'terminal' : 'chat',
   };
   state.settings = { ...state.settings, ...patch };
   const saved = api.setSettings(patch);

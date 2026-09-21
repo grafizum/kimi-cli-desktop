@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('kimiDesktop', {
   // into a session so the CLI can read them. See session:write-attachment.
   writeAttachment: (tabId, files) => ipcRenderer.invoke('session:write-attachment', { tabId, files }),
 
+  // Chat view: start/stop the CLI's own `kimi web` server for a session. The
+  // main process returns only a loopback URL (validated there) which the
+  // renderer loads in a <webview> — Moonshot's genuine chat UI, embedded.
+  startWebSession: (opts) => ipcRenderer.invoke('session:start', opts),
+  stopWebSession: (tabId) => ipcRenderer.invoke('session:stop-web', tabId),
+  onWebExit: (cb) => ipcRenderer.on('web:exit', (_e, m) => cb(m)),
+
   // Kimi CLI config.toml
   readConfig: () => ipcRenderer.invoke('config:read'),
   writeConfig: (content) => ipcRenderer.invoke('config:write', content),

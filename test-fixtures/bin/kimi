@@ -6,6 +6,9 @@
 # Contract with the tests, kept identical to kimi.cmd:
 #   --version  -> a version-like token kimi-detect accepts
 #   login      -> device-login URL + user code
+#   web        -> mimics the real `kimi web`: bind 127.0.0.1:<port>, print the
+#                 "Local: .../#token=..." banner, then serve until killed. The
+#                 app parses that banner, so the fake must print the same shape.
 #   otherwise  -> echo the argv (so --session / --prompt are visible), read one
 #                 line, echo it back, then exit
 
@@ -20,6 +23,32 @@ case "$1" in
     exit 0
     ;;
 esac
+
+# `kimi ... web --port <p>` (also accepts `web` with the default port) —
+# serves a one-line HTML page that marks itself, then sleeps forever until
+# the app stops the server (kill) or the process is signalled.
+if [ "$1" = "web" ] || [ "$2" = "web" ] || [ "$3" = "web" ]; then
+  KCD_PORT=58627
+  prev=""
+  for a in "$@"; do
+    case "$prev" in
+      --port) KCD_PORT="$a" ;;
+    esac
+    prev="$a"
+  done
+  TOKEN=FAKEWEBTOKEN0123456789abcdef
+  echo "  Fake Kimi server ready  9.9.9-test"
+  echo ""
+  echo "  Local:    http://127.0.0.1:$KCD_PORT/#token=$TOKEN"
+  echo "  Stop:     Ctrl+C"
+  # The banner must be flushed before the app's parser can see it.
+  # A tiny background HTTP responder keeps the webview's load honest: it
+  # answers GET with a page that can be asserted on in the DOM.
+  while true; do
+    printf 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 62\r\n\r\n<!doctype html><title>Kimi</title><h1 id="fake-web-root">KIMI-WEB-OK</h1>' \
+      | nc -l -p "$KCD_PORT" >/dev/null 2>&1 || sleep 3600
+  done
+fi
 
 echo "KIMI-TUI-STARTED args=[$*]"
 printf 'INPUT: '

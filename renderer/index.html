@@ -343,6 +343,14 @@
             <input id="st-font-family" type="text" placeholder="Leave empty for the default stack" spellcheck="false" />
           </label>
           <label class="field">
+            <span class="field-label">Session view</span>
+            <select id="st-session-view">
+              <option value="chat">Chat — Kimi's own chat UI, embedded (new conversations)</option>
+              <option value="terminal">Terminal — the classic kimi TUI</option>
+            </select>
+            <span class="field-hint">What new and resumed sessions open as. Every tab can still switch between Chat and Terminal at any time.</span>
+          </label>
+          <label class="field">
             <span class="field-label">Terminal panel</span>
             <select id="st-term-style">
               <option value="panel">Framed panel — matches the app chrome</option>

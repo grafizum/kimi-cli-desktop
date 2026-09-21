@@ -72,6 +72,10 @@ function walkFiles(dir) {
 // Throwaway profile: keeps the single-instance lock (and settings.json) away
 // from the developer's real profile, and stops two runs from sharing state.
 const USER_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'kcd-e2e-'));
+// The chat view (embedded `kimi web`) is the default for users, but sections
+// 3-9 assert the CLASSIC terminal flow — pin this profile to the terminal view
+// up front; the chat view gets its own dedicated section below.
+fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ sessionView: 'terminal' }));
 
 let failures = 0;
 let threw = false;
@@ -541,6 +545,47 @@ async function main() {
   await evalJS(`__kcd.closeTab(__kcd.state.tabs.get(__kcd.state.activeTabId))`);
   const tabsAfter = await evalJS(`document.querySelectorAll('.tab').length`);
   ok(tabsAfter === tabsBefore - 1, 'tab closes cleanly');
+
+  // 10b. Chat view — the CLI's own `kimi web` server embedded in a tab. The
+  // fake CLI mimics the real server banner, so the app's parser hands the
+  // webview a loopback URL with a token. Whether the page itself renders
+  // depends on the fake (it serves nothing on every platform), so assertions
+  // cover the app's wiring, not the fake's HTML.
+  console.log('\n[e2e] chat view (embedded kimi web)');
+  await evalJS(`(async () => { window.__kcdChatTab = await __kcd.startSession({ cwd: ${JSON.stringify(WORKSPACE)}, mode: 'default', kind: 'interactive', label: 'chat test', web: true }); return 1; })()`);
+  await waitFor(async () => await evalJS(`window.__kcdChatTab && window.__kcdChatTab.webview`), 'chat tab with a webview');
+  ok(true, 'a chat session embeds a webview in its pane');
+  const chatSrc = await evalJS(`window.__kcdChatTab.webview.getAttribute('src')`);
+  ok(/^http:\/\/127\.0\.0\.1:\d+\/#token=.+/.test(chatSrc), 'the webview loads the CLI\'s loopback URL with a token', chatSrc);
+  ok(await evalJS(`window.__kcdChatTab.view`) === 'chat', 'the tab starts in chat view');
+  ok(await evalJS(`!!window.__kcdChatTab.pane.querySelector('.view-switch')`), 'the Chat ⇄ Terminal switch is present');
+  await waitFor(async () => (await evalJS(`document.querySelectorAll('.pane-loader').length`)) === 0,
+    'chat loading cover lifts once the server banner is parsed', 10000);
+  ok(true, 'the chat loading cover lifts when the server is ready');
+
+  // Chat → Terminal: driven through the switch button (the same path a user
+  // takes), then the same session must resume in the PTY.
+  await evalJS(`__kcd.state.activeTabId = window.__kcdChatTab.id; __kcd.activateTab(window.__kcdChatTab.id); 1`);
+  await evalJS(`document.querySelector('.term-pane[data-tab="' + window.__kcdChatTab.id + '"] .vs-btn[data-view="terminal"]').click(); 1`);
+  await waitFor(async () => (await evalJS(`window.__kcdChatTab.view`)) === 'terminal', 'view switch to terminal');
+  await waitFor(async () => {
+    const buf = await evalJS(`(() => { const t = window.__kcdChatTab.term.buffer.active; let s = ''; for (let i = 0; i < t.length; i++) s += (t.getLine(i) || {}).translateToString(true) + '\\n'; return s; })()`);
+    return buf.includes('KIMI-TUI-STARTED');
+  }, 'terminal view resumed the session in the PTY');
+  ok(true, 'switching to Terminal resumes the session in the PTY');
+
+  // Terminal → Chat again: a fresh chat server for the same tab id.
+  await evalJS(`document.querySelector('.term-pane[data-tab="' + window.__kcdChatTab.id + '"] .vs-btn[data-view="chat"]').click(); 1`);
+  await waitFor(async () => (await evalJS(`window.__kcdChatTab.view`)) === 'chat', 'view switch back to chat');
+  const chatSrc2 = await evalJS(`window.__kcdChatTab.webview.getAttribute('src')`);
+  ok(/^http:\/\/127\.0\.0\.1:\d+\/#token=.+/.test(chatSrc2), 'switching back to Chat restarts the web server', chatSrc2);
+
+  // The chat tab closes its backend cleanly.
+  await evalJS(`__kcd.closeTab(window.__kcdChatTab)`);
+  await waitFor(async () =>
+    (await evalJS(`[...__kcd.state.tabs.values()].some(t => t.id === window.__kcdChatTab.id)`)) === false,
+    'chat tab closes');
+  ok(true, 'closing a chat tab stops its server without wedging the app');
 
   // 11. Changing the session folder (KIMI_CODE_HOME) and pressing Apply must
   // reload the window: the app re-boots against the new home with no manual
