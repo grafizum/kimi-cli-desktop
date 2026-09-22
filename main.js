@@ -20,6 +20,28 @@ const kimiDetect = require('./src/kimi-detect');
 const settingsStore = require('./src/settings');
 const webSession = require('./src/web-session');
 
+// --- Crash telemetry ---------------------------------------------------------
+// The app can die with all console output swallowed (launched detached), leaving
+// nothing behind. Every fatal path writes into the boot log so a crash after the
+// window closed is still diagnosable. uncaughtException is logged and swallowed:
+// for a UI shell, staying up with a degraded feature beats vanishing.
+function noteCrash(kind, detail) {
+  try {
+    fs.appendFileSync(path.join(__dirname, 'debug-boot.log'),
+      new Date().toISOString() + ' CRASH ' + kind + ': ' + String(detail).slice(0, 2000) + '\n');
+  } catch { /* diagnostics only */ }
+  console.error('[crash]', kind, detail);
+}
+process.on('uncaughtException', (err) => {
+  noteCrash('uncaught-exception', (err && err.stack) || err);
+});
+process.on('unhandledRejection', (err) => {
+  noteCrash('unhandled-rejection', (err && (err.stack || err.message)) || err);
+});
+app.on('child-process-gone', (_e, details) => { noteCrash('child-process-gone', JSON.stringify(details)); });
+app.on('render-process-gone', (_e, wc, details) => { noteCrash('render-process-gone', JSON.stringify(details)); });
+app.on('gpu-process-crashed', (_e, killed) => { noteCrash('gpu-process-crashed', 'killed=' + killed); });
+
 // --- Startup self-check -----------------------------------------------------
 // Two environments kill Chromium before the window exists, both with the same
 // "GPU process isn't usable. Goodbye." exit:
@@ -184,6 +206,21 @@ function stopServer(reason) {
   }
 }
 
+// The session home the SERVER may actually use. A UNC home (\\wsl.localhost\...)
+// is only valid when the CLI itself runs inside WSL; handing a native Windows
+// kimi.exe a network-share home breaks its data layer (hard links and directory
+// watches are unsupported there) and it dies the moment a turn writes — which
+// looked like "the app freezes/crashes when a prompt is submitted". In that
+// mismatched combo, run with the CLI's default Windows home instead.
+function effectiveKimiCodeHome() {
+  const home = settings.kimiCodeHome || '';
+  if (home && /^\\\\/.test(home) && !isWslMode()) {
+    console.error('[web] ignoring the WSL session home for a Windows CLI — using its default home');
+    return '';
+  }
+  return home;
+}
+
 async function ensureServer() {
   if (serverStarting) return serverStatus();
   if (server && server.url) return serverStatus();
@@ -208,7 +245,7 @@ async function ensureServer() {
       args: webSession.buildWebArgs({ mode: settings.defaultMode || 'default' }),
       cwd: os.homedir(),
       env: currentEnv(),
-      kimiCodeHome: settings.kimiCodeHome || '',
+      kimiCodeHome: effectiveKimiCodeHome(),
       buildSpawn: kimiDetect.buildSpawn,
       wsl: isWslMode() ? detection.wsl : null,
     });
@@ -451,7 +488,9 @@ function registerIpc() {
         viaWsl: true,
       };
     }
-    const home = settings.kimiCodeHome || process.env.KIMI_CODE_HOME
+    // Same home the server resolves (a UNC home is ignored for a Windows CLI,
+    // see effectiveKimiCodeHome) so panel edits land where the CLI reads them.
+    const home = effectiveKimiCodeHome() || process.env.KIMI_CODE_HOME
       || path.join(os.homedir(), '.kimi-code');
     return { fsPath: path.join(home, 'config.toml'), displayPath: path.join(home, 'config.toml'), viaWsl: false };
   }
