@@ -105,18 +105,19 @@ try {
       '.tool-line.err{box-shadow:inset 2px 0 0 var(--kcd-err);background:color-mix(in srgb,var(--kcd-err) 6%,transparent);border-radius:6px;}',
       '.tool-line .tl-body-content,.tool-line .tl-body pre,.tool-line .tl-body code{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.84em;line-height:1.5;color:var(--kcd-think-text);}',
       '.tool-line.err .tl-body-content{color:color-mix(in srgb,var(--kcd-err) 80%,var(--kcd-think-text));}',
-      // The owned status timer. It DOCKS next to kimi's own working label
-      // ("Requesting…"/"Working…" inside .working-indicator) so the precise
-      // activity + elapsed time sit exactly where the user is already
-      // looking; the fixed bottom-right corner is only the fallback for
-      // states where the indicator is not mounted.
+      // The owned status timer. It APPEARS right next to kimi's own working
+      // label ("Requesting…"/"Working…" in .working-indicator) — but it is
+      // NOT inserted into kimi's DOM: Vue diffs children by position, and a
+      // foreign node inside its tree shifts every index, misrendering the
+      // chat (user messages invisible, turns not starting — measured). So
+      // the chip stays a direct child of <body> and is positioned with
+      // fixed coordinates computed from the label's screen rect; bottom-right
+      // is the fallback when the indicator is not mounted.
       '#kcd-status{position:fixed;right:14px;bottom:12px;z-index:2147483000;display:flex;align-items:center;gap:8px;pointer-events:none;',
       '  font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.78em;letter-spacing:.01em;',
       '  color:var(--kcd-think-text);background:var(--kcd-pill-bg);',
       '  border:1px solid color-mix(in srgb,var(--kcd-think-accent) 30%,transparent);border-radius:999px;padding:6px 12px;',
       '  box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:min(60vw,560px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '.working-indicator #kcd-status{position:static;display:inline-flex;margin-left:10px;padding:1px 10px;box-shadow:none;',
-      '  font-size:inherit;max-width:40vw;vertical-align:middle;}',
       '#kcd-status::before{content:"\\25CF";color:var(--kcd-think-accent);font-size:.85em;animation:kcd-pulse 1.2s ease-in-out infinite;}',
       '@keyframes kcd-pulse{0%,100%{opacity:1;}50%{opacity:.3;}}',
       '@media (prefers-reduced-motion:reduce){#kcd-status::before{animation:none;}}',
@@ -277,18 +278,33 @@ try {
       return '';
     }
 
-    // Dock the timer chip next to kimi's own status label whenever that
-    // indicator is on screen (idempotent: checked parentage, moves at most
-    // once per indicator mount).
+    // Position the chip beside kimi's label — visually docked, physically a
+    // <body> child (see CSS comment). Recomputed at most once per paint
+    // (1 Hz); idempotent style writes only.
     function dockPill() {
       if (!pill) return;
-      const wi = document.querySelector('.working-indicator');
-      if (wi && pill.parentElement !== wi) {
-        const label = wi.querySelector('.wi-label');
-        if (label && label.nextSibling) wi.insertBefore(pill, label.nextSibling);
-        else wi.appendChild(pill);
-      } else if (!wi && pill.parentElement !== document.body) {
-        document.body.appendChild(pill);
+      const label = document.querySelector('.working-indicator:not(.idle) .wi-label');
+      if (label) {
+        const r = label.getBoundingClientRect();
+        if (r.width > 0) {
+          const left = Math.min(Math.round(r.right + 10), window.innerWidth - 320);
+          const top = Math.round(r.top - 2);
+          const want = 'left:' + left + 'px;top:' + top + 'px;right:auto;bottom:auto;';
+          if (pill.style.cssText.indexOf('right:auto') === -1 || !pill.style.left) {
+            pill.style.cssText += 'left:' + left + 'px;top:' + top + 'px;right:auto;bottom:auto;';
+          } else if (pill.style.left !== left + 'px' || pill.style.top !== top + 'px') {
+            pill.style.left = left + 'px';
+            pill.style.top = top + 'px';
+          }
+          return;
+        }
+      }
+      // Fallback: bottom-right corner (remove any inline dock overrides).
+      if (pill.style.right !== '14px') {
+        pill.style.left = 'auto';
+        pill.style.top = 'auto';
+        pill.style.right = '14px';
+        pill.style.bottom = '12px';
       }
     }
 
