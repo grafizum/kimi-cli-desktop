@@ -149,8 +149,31 @@ try {
     // click races Vue: the observer rescans before Vue patches aria-expanded,
     // sees "false" again, and toggles the block right back closed. The delay
     // plus the re-check guarantees one click == one open.
+    // A turn is LIVE only when the user submitted it (armed on Enter).
+    // Class-based detection (".streaming") is NOT trustworthy for this: a
+    // session interrupted mid-turn keeps those classes in its SAVED history,
+    // so on load the enhancer would believe a turn is streaming and
+    // force-expand the entire lazy-rendered conversation — a DOM explosion
+    // that hard-blocks the renderer (measured: the main thread wedges solid,
+    // CDP included). Only Enter-armed turns expand; everything else keeps
+    // kimi's own folds (Alt+click still opens anything by hand).
+    // Evaluated at most 4x/second; the passive load path stays ~free.
+    let liveCache = false;
+    let liveCheckedAt = 0;
+    function liveTurn() {
+      const now = Date.now();
+      if (now - liveCheckedAt > 250) {
+        liveCheckedAt = now;
+        liveCache = armed;
+      }
+      return liveCache;
+    }
+
+    let clickBudget = 0; // hard bound per armed turn — no runaway expansion
     function expandOnce(head) {
       if (!(head instanceof HTMLElement)) return;
+      if (!liveTurn()) return;
+      if (clickBudget <= 0) return;
       if (head.getAttribute('aria-expanded') !== 'false') return;
       if (userManaged.has(rootOf(head))) return;
       if (head.dataset.kcdPending === '1') return;
@@ -158,6 +181,7 @@ try {
       if (tries >= 3) return;
       head.dataset.kcdPending = '1';
       head.dataset.kcdTries = String(tries + 1);
+      clickBudget -= 1;
       setTimeout(() => {
         try {
           head.dataset.kcdPending = '0';
@@ -170,6 +194,7 @@ try {
     }
 
     function expandAll(scope) {
+      if (!liveTurn()) return; // passive load: touch nothing (see liveTurn)
       const root = scope instanceof Element ? scope : document;
       if (root.matches && root.matches(HEADS)) expandOnce(root);
       for (const h of root.querySelectorAll ? root.querySelectorAll(HEADS) : []) expandOnce(h);
@@ -177,11 +202,20 @@ try {
 
     function scan(target) {
       if (scanning) return;
+      if (!liveTurn()) return; // cheap gate FIRST — no DOM work while passive
       scanning = true;
       queueMicrotask(() => {
         scanning = false;
         try {
-          expandAll(target instanceof Element ? target : document);
+          // NEVER rescan from a high node (body/document) — a streaming turn
+          // mutates top-level nodes hundreds of times, and a whole-document
+          // querySelectorAll each time is an O(n²) storm that freezes the
+          // renderer on long sessions. A body-level hit scans only the LAST
+          // element (the newly added tail), which is where the new content is.
+          const root = target instanceof Element && target !== document.body
+            ? target
+            : (document.body && document.body.lastElementChild) || document;
+          expandAll(root);
           ensureClock();
         } catch { /* a detached node raced us — the next mutation rescan covers it */ }
       });
@@ -205,10 +239,20 @@ try {
       return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
     }
 
+    // Same 250ms-cache discipline as liveTurn: the observer fires thousands
+    // of times during a big session render, and one querySelector per batch
+    // is enough to hard-wedge the main thread. Never query per mutation.
+    let activeCache = false;
+    let activeCheckedAt = 0;
     function isActive() {
-      return !!document.querySelector(
-        '.working-indicator:not(.idle), .think.streaming, .tool-line .tl-status.running, .turn-fold.streaming'
-      );
+      const now = Date.now();
+      if (now - activeCheckedAt > 250) {
+        activeCheckedAt = now;
+        activeCache = !!document.querySelector(
+          '.working-indicator:not(.idle), .think.streaming, .tool-line .tl-status.running, .turn-fold.streaming'
+        );
+      }
+      return activeCache;
     }
 
     function currentActivity() {
@@ -226,12 +270,17 @@ try {
     function paintStatus() {
       if (!pill) return;
       const act = currentActivity() || (armed ? 'Thinking' : 'Working');
-      pill.textContent = act + ' \u00B7 ' + fmtDur(Date.now() - (turnStart || Date.now()));
-      pill.style.display = '';
+      const text = act + ' \u00B7 ' + fmtDur(Date.now() - (turnStart || Date.now()));
+      // IDEMPOTENT writes only: textContent replacement fires a childList
+      // mutation, and this pill sits inside the observed body — a blind write
+      // re-triggers our own observer, which paints again… an infinite
+      // paint→observe→paint loop that hard-wedges the renderer.
+      if (pill.textContent !== text) pill.textContent = text;
+      if (pill.style.display !== '') pill.style.display = '';
     }
 
     function endTurn() {
-      armed = false; turnStart = 0; graceTicks = 0;
+      armed = false; turnStart = 0; graceTicks = 0; clickBudget = 0;
       if (clock !== null) { clearInterval(clock); clock = null; }
       if (pill) pill.style.display = 'none';
     }
@@ -242,6 +291,7 @@ try {
     function armTurn() {
       if (!turnStart) turnStart = Date.now();
       armed = true; graceTicks = 0;
+      clickBudget = 400; // one armed turn, bounded expansion
       paintStatus();
       ensureClock();
     }
@@ -250,7 +300,8 @@ try {
       try {
         if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
         const t = e.target;
-        if (t && t.tagName === 'TEXTAREA') armTurn();
+        // The composer is a ProseMirror contenteditable DIV (not a textarea).
+        if (t && (t.tagName === 'TEXTAREA' || t.isContentEditable)) armTurn();
       } catch { /* never break the guest's own handlers */ }
     }, true);
 
@@ -280,17 +331,26 @@ try {
         pill.setAttribute('role', 'status');
         document.body.appendChild(pill);
 
-        scan(document);
+        // No boot-time expansion pass: history loads folded (see liveTurn).
         new MutationObserver((muts) => {
+          // Everything is gated on an armed turn: the passive path (loading
+          // history, even one saved mid-turn with stale .streaming classes)
+          // must stay ~free — per-batch work here is what hard-wedged the
+          // renderer on big sessions.
+          if (!armed) return;
           for (const m of muts) {
             if (m.type === 'attributes' && m.target instanceof Element) {
               // Class flips are the re-collapse edges (fold closed, thinking
               // auto-collapsed, row finished) — re-run the expansion there.
-              if (m.target.matches(HEADS) || m.target.querySelector(HEADS)) {
-                expandAll(m.target);
-              }
-            } else if (m.type === 'childList') {
+              if (m.target.matches(HEADS)) expandOnce(m.target);
+            } else if (m.type === 'childList' && m.target instanceof Element
+                       && m.target !== document.body) {
               scan(m.target);
+            } else if (m.type === 'childList') {
+              // Top-level: only the new tail, never the whole document.
+              const added = m.addedNodes && m.addedNodes.length
+                ? m.addedNodes[m.addedNodes.length - 1] : null;
+              if (added instanceof Element) scan(added);
             }
           }
           ensureClock();
