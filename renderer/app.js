@@ -197,6 +197,9 @@ const models = { modal: null, content: '' };
 function openModels() {
   models.modal = document.getElementById('modal-models');
   models.modal.classList.remove('hidden');
+  // One frame after un-hiding, mark .open so the fade/slide transition runs
+  // (a display:none → block flip cannot animate on its own).
+  requestAnimationFrame(() => requestAnimationFrame(() => models.modal.classList.add('open')));
   api.readConfig().then((res) => {
     models.content = res.content || '';
     document.getElementById('mp-config').value = models.content;
@@ -205,7 +208,13 @@ function openModels() {
 }
 
 function closeModels() {
-  models.modal.classList.add('hidden');
+  if (!models.modal || models.modal.classList.contains('hidden')) return;
+  // Animate out first, then hard-hide when the transition ends.
+  models.modal.classList.remove('open');
+  const backdrop = models.modal;
+  const hide = () => { backdrop.classList.add('hidden'); backdrop.removeEventListener('transitionend', hide); };
+  backdrop.addEventListener('transitionend', hide);
+  setTimeout(hide, 260); // fallback if transitionend never fires
 }
 
 function setModelsStatus(text, kind) {

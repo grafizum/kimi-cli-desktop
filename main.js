@@ -403,7 +403,10 @@ function registerIpc() {
   // Ask the guest preload (synchronous, before the Kimi web UI paints) so the
   // embedded UI starts in the SAME appearance the user picked for the shell.
   ipcMain.on('webui:get-appearance', (e) => {
-    e.returnValue = { colorScheme: settings.theme === 'light' ? 'light' : 'dark' };
+    e.returnValue = {
+      colorScheme: settings.theme === 'light' ? 'light' : 'dark',
+      tuiThinking: settings.tuiThinking !== false,
+    };
   });
 
   // --- config.toml (models & providers) -------------------------------------

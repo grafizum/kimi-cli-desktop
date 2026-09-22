@@ -175,8 +175,13 @@ ok(appCode.includes('openai:') && !appCode.includes('openai_legacy'),
   'app: provider type is openai (kimi 2.0.2 rejects openai_legacy without explicit protocol fields)');
 ok(!/value="openai_legacy"/.test(html),
   'index: the type dropdown no longer offers openai_legacy');
+ok(settingsStore.DEFAULTS.tuiThinking === true,
+  'settings: tui-thinking defaults ON (reasoning streams open like the TUI)');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
+ok(/transition:\s*opacity/.test(css) && /transitionend/.test(appSrc),
+  'css+app: the models modal animates open and closed');
+ok(/prefers-reduced-motion/.test(css), 'css: animations respect reduced motion');
 ok(css.includes('.webview-live') && !/display:\s*none[^}]*(#chat|webview)/.test(css),
   'css: the webview stays laid out (visibility, never display:none)');
 ok(css.includes("data-theme='light'"), 'css: light theme tokens exist');
@@ -193,6 +198,13 @@ ok(preloadSrc.includes('ensureWeb') && preloadSrc.includes('restartWeb'),
   'preload: the web lifecycle is bridged');
 ok(!preloadSrc.includes('writeInput') && !preloadSrc.includes('listSessions'),
   'preload: no PTY/history bridges remain');
+
+// guest preload (TUI-thinking enhancer)
+const guestSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'web-guest-preload.js'), 'utf8');
+ok(guestSrc.includes('tuiThinking') && guestSrc.includes('think-head'),
+  'guest preload: keeps thinking blocks expanded like the TUI (Alt+click escape hatch)');
+ok(guestSrc.includes('prefers-reduced-motion') === false && guestSrc.includes('queueMicrotask'),
+  'guest preload: the enhancer is mutation-driven, not a polling loop');
 
 // ---------------------------------------------------------------------------
 // 7. Packaging — a separate edition with separate artifacts

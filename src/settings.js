@@ -14,6 +14,7 @@ const DEFAULTS = {
   kimiCodeHome: '', // KIMI_CODE_HOME override (empty = ~/.kimi-code)
   defaultMode: 'default', // default | plan | yolo | auto — server start mode
   theme: 'dark', // dark | light — seeded into the chat UI's color scheme
+  tuiThinking: true, // keep the chat's thinking blocks expanded like the CLI TUI
 };
 
 function load(dir) {
