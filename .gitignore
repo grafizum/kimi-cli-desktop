@@ -32,3 +32,4 @@ test-fixtures/kimi-home/updates/
 test-fixtures/kimi-home/device_id
 test-fixtures/kimi-home/tui.toml
 test-fixtures/kimi-home/workspaces.json
+debug-boot.log

@@ -58,8 +58,10 @@
 
 try {
   const { ipcRenderer } = require('electron');
+  const boot = (info) => { try { ipcRenderer.sendSync('webui:preload-boot', info); } catch { /* telemetry only */ } };
   const appearance = ipcRenderer.sendSync('webui:get-appearance');
   const scheme = appearance && appearance.colorScheme === 'light' ? 'light' : 'dark';
+  boot({ stage: 'document-start', hasAppearance: !!appearance, tuiThinking: !!(appearance && appearance.tuiThinking), scheme });
   try {
     localStorage.setItem('kimi-web.color-scheme', scheme);
     document.documentElement.dataset.colorScheme = scheme;
@@ -298,6 +300,7 @@ try {
 
     if (document.body) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
+    boot({ stage: 'tui-section-armed', pill: true, heads: HEADS });
   }
 } catch {
   /* bridge unavailable — never break the guest page over a preference hint */

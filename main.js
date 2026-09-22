@@ -269,6 +269,44 @@ function scheduleCliWatch() {
 // Window
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Webview security + guest preload — module scope so it is registered BEFORE
+// any window (and therefore any host webContents) exists. will-attach-webview
+// fires on the HOST webContents: registering this after new BrowserWindow(...)
+// misses the event, and the guest preload silently never runs — the bug that
+// left the embedded chat completely vanilla.
+// ---------------------------------------------------------------------------
+const dbgBoot = (line) => {
+  try { fs.appendFileSync(path.join(__dirname, 'debug-boot.log'), new Date().toISOString() + ' ' + line + '\n'); }
+  catch { /* diagnostics only */ }
+};
+app.on('web-contents-created', (_e, contents) => {
+  dbgBoot('web-contents-created: type=' + contents.getType());
+  contents.on('will-attach-webview', (_ev, webPreferences, params) => {
+    if (!webSession.isAllowedWebUrl(params.src)) {
+      console.error('[webview] refused to attach a webview loading a non-loopback URL');
+      _ev.preventDefault();
+      return;
+    }
+    delete webPreferences.nodeIntegration;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    // Runs inside the Kimi web UI BEFORE its scripts: seeds the UI's own
+    // color-scheme from the shell theme and its onboarding skip, so the chat
+    // opens in the user's theme, straight into the workspace.
+    webPreferences.preload = path.join(__dirname, 'src', 'web-guest-preload.js');
+    console.log('[webview] attaching:', params.src, '(guest preload set)');
+    dbgBoot('webview attaching: ' + params.src + ' preload=' + webPreferences.preload);
+  });
+  if (contents.getType() === 'webview') {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//.test(url)) openWithOs(url);
+      return { action: 'deny' };
+    });
+  }
+});
+
 function createWindow() {
   const isMac = process.platform === 'darwin';
   mainWindow = new BrowserWindow({
@@ -297,37 +335,12 @@ function createWindow() {
   });
 
   // The renderer embeds the CLI's own web UI in a single <webview>. Everything
-  // it may load is decided here, not in the page:
-  //   - only the CLI's loopback server URL (token came from the app's own
-  //     capture of the server banner — a compromised renderer has no other
-  //     origin that would pass isAllowedWebUrl);
-  //   - the guest gets NO node integration, sandboxed, fresh session;
-  //   - a guest preload seeds the UI's color scheme from the shell theme;
-  //   - popups/target=_blank hand the link to the OS browser instead.
-  app.on('web-contents-created', (_e, contents) => {
-    contents.on('will-attach-webview', (_ev, webPreferences, params) => {
-      if (!webSession.isAllowedWebUrl(params.src)) {
-        console.error('[webview] refused to attach a webview loading a non-loopback URL');
-        _ev.preventDefault();
-        return;
-      }
-      delete webPreferences.nodeIntegration;
-      webPreferences.contextIsolation = true;
-      webPreferences.sandbox = true;
-      webPreferences.nodeIntegrationInSubFrames = false;
-      // Runs inside the Kimi web UI BEFORE its scripts: seeds the UI's own
-      // color-scheme from the shell theme and its onboarding skip, so the chat
-      // opens in the user's theme, straight into the workspace.
-      webPreferences.preload = path.join(__dirname, 'src', 'web-guest-preload.js');
-    });
-    if (contents.getType() === 'webview') {
-      contents.setWindowOpenHandler(({ url }) => {
-        if (/^https?:\/\//.test(url)) openWithOs(url);
-        return { action: 'deny' };
-      });
-    }
-  });
-
+  // it may load is decided in the module-scope web-contents-created handler
+  // (registered BEFORE any window exists — see the block above
+  // createWindow()): will-attach-webview fires on the HOST webContents, so
+  // attaching that handler only after new BrowserWindow(...) misses the event
+  // and the guest preload silently never runs. That ordering bug left the
+  // embedded chat completely vanilla.
   mainWindow.on('maximize', () => send('window:maximized-changed', true));
   mainWindow.on('unmaximize', () => send('window:maximized-changed', false));
 
@@ -402,6 +415,19 @@ function registerIpc() {
 
   // Ask the guest preload (synchronous, before the Kimi web UI paints) so the
   // embedded UI starts in the SAME appearance the user picked for the shell.
+  // Boot telemetry from the guest preload (sent synchronously during
+  // document-start, before any of the web UI's own scripts). Written to a
+  // file (not just stdout) so a dead enhancer is diagnosable even when the
+  // app's console output is swallowed.
+  ipcMain.on('webui:preload-boot', (e, info) => {
+    try {
+      console.log('[guest-preload]', JSON.stringify(info));
+      fs.appendFileSync(path.join(__dirname, 'debug-boot.log'),
+        new Date().toISOString() + ' guest-preload ' + JSON.stringify(info) + '\n');
+    } catch { /* never crash over logging */ }
+    e.returnValue = { ok: true };
+  });
+
   ipcMain.on('webui:get-appearance', (e) => {
     e.returnValue = {
       colorScheme: settings.theme === 'light' ? 'light' : 'dark',
