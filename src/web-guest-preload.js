@@ -39,9 +39,20 @@
 //    (bundle class `tool-line`): the web renders them in the chat font with
 //    an uncolored status chip, while the terminal colors them (red error
 //    rows, green running state, mono text) and always shows errors inline.
-//    Here: mono styling + status colors via CSS, and an error row is clicked
-//    open ONCE so its details are visible immediately (Alt+click hands the
+//    Here: mono styling + status colors via CSS, and every expandable row is
+//    clicked open once so args/results/errors are visible immediately — the
+//    terminal never hides tool feedback behind a chevron (Alt+click hands the
 //    row back to the user, same escape hatch as the thinking blocks).
+//
+// 5. Precise live status. The web's working indicator only ever says
+//    "Requesting…"/"Working…" (verified: its label computed switches between
+//    two generic i18n strings), while the CLI reports WHAT it is doing and
+//    for how long. The enhancer derives the real activity from the DOM — the
+//    running tool row's own label, else the streaming reasoning block — and
+//    rewrites the indicator as "<activity> · <elapsed>", ticking via a single
+//    1s clock that runs ONLY while a turn is active. No DOM polling: the
+//    MutationObserver drives everything else, and the clock self-clears the
+//    moment the indicator goes idle.
 //
 // Sandboxed preload: `electron` here exposes only the safe renderer APIs
 // (ipcRenderer among them) — no Node, no fs, nothing else.
@@ -96,6 +107,8 @@ try {
           '.tool-line.err .tl-body-content{color:color-mix(in srgb,var(--kcd-err) 80%,var(--kcd-think-text));}',
           ':root{--kcd-err:#ff6369;}',
           ':root[data-color-scheme="light"]{--kcd-err:#c4323a;}',
+          // Status pill — terminal log line look (see point 5).
+          '.working-indicator .wi-label{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.8em;color:var(--kcd-think-text);}',
         ].join('\n');
         (document.head || document.documentElement).appendChild(st);
       }
@@ -113,13 +126,20 @@ try {
       return block.classList.contains('open');
     }
 
-    // Error tool rows: open once so the failure is readable immediately,
-    // the way the terminal prints errors inline instead of behind a chevron.
-    function openErrorRow(row) {
-      if (userManaged.has(row) || row.dataset.tuiErrOpen === '1') return;
-      row.dataset.tuiErrOpen = '1';
-      const head = row.querySelector('.tl-head');
-      if (head instanceof HTMLElement) head.click();
+    // Tool rows: open once so args/results/errors are visible immediately —
+    // the terminal never hides tool feedback behind a chevron. A small
+    // attempt budget guards against fighting a row the UI re-collapses;
+    // Alt+click permanently hands a row back to the user.
+    function openToolRow(row) {
+      if (userManaged.has(row)) return;
+      const head = row.querySelector('.tl-head.clickable');
+      if (!(head instanceof HTMLElement)) return;
+      if (row.dataset.tuiRowOpen === '1' && row.classList.contains('open')) return;
+      const tries = Number(row.dataset.tuiRowTries || '0');
+      if (tries >= 3) return;
+      row.dataset.tuiRowTries = String(tries + 1);
+      row.dataset.tuiRowOpen = '1';
+      head.click();
     }
 
     function enforceTui(block) {
@@ -145,9 +165,10 @@ try {
             b.dataset.tui = '1';
             if (b.classList.contains('streaming') || b.dataset.tuiWasStreaming === '1') enforceTui(b);
           }
-          const errRows = (root instanceof Element ? root : document)
-            .querySelectorAll('.tool-line.err:not([data-tui-err-open])');
-          for (const r of errRows) openErrorRow(r);
+          const rows = (root instanceof Element ? root : document)
+            .querySelectorAll('.tool-line:not([data-tui-row-open])');
+          for (const r of rows) openToolRow(r);
+          ensureClock();
         } catch { /* a detached node raced us — the next mutation rescan covers it */ }
       });
     }
@@ -174,6 +195,64 @@ try {
       } catch { /* never break the guest's own handlers */ }
     }, true);
 
+    // Precise live status (see header comment, point 5). One gated clock,
+    // no DOM polling: the tick only rewrites the indicator label while a
+    // turn is active and stops the moment the indicator goes away. Vue's
+    // own re-renders restore its generic text; the observer repaints ours.
+    let turnStart = 0;
+    let clock = null;
+
+    function fmtDur(ms) {
+      const s = Math.max(1, Math.round(ms / 1000));
+      return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+    }
+
+    function currentActivity() {
+      const run = document.querySelector('.tool-line:not(.err) .tl-status.running');
+      if (run) {
+        const row = run.closest('.tool-line');
+        const lead = row && row.querySelector('.tl-lead');
+        const text = lead && lead.textContent ? lead.textContent.trim().replace(/\s+/g, ' ') : '';
+        if (text) return text.length > 64 ? text.slice(0, 63) + '…' : text;
+      }
+      if (document.querySelector('.think.streaming')) return 'Thinking';
+      return '';
+    }
+
+    function paintStatus() {
+      for (const ind of document.querySelectorAll('.working-indicator:not(.idle)')) {
+        const label = ind.querySelector('.wi-label');
+        if (!(label instanceof HTMLElement)) continue;
+        const dur = fmtDur(Date.now() - (turnStart || Date.now()));
+        const raw = label.textContent || '';
+        const base = currentActivity()
+          || raw.replace(/\s·\s\d+(s|m\s\d\ds)$/, ''); // strip our own suffix
+        const next = base ? base + ' · ' + dur : '';
+        if (next && label.textContent !== next) label.textContent = next;
+      }
+    }
+
+    function ensureClock() {
+      const anyActive = document.querySelector('.working-indicator:not(.idle)');
+      if (anyActive) {
+        if (!turnStart) turnStart = Date.now();
+        paintStatus();
+        if (clock === null) {
+          clock = setInterval(() => {
+            try {
+              if (!document.querySelector('.working-indicator:not(.idle)')) {
+                clearInterval(clock); clock = null; turnStart = 0;
+                return;
+              }
+              paintStatus();
+            } catch { /* cosmetic only */ }
+          }, 1000);
+        }
+      } else if (clock !== null) {
+        clearInterval(clock); clock = null; turnStart = 0;
+      }
+    }
+
     const start = () => {
       try {
         scan(document);
@@ -183,7 +262,9 @@ try {
               if (m.target.classList.contains('think')) {
                 enforceTui(m.target); // streaming edge — cheap, targeted
               } else if (m.target.classList.contains('tool-line')) {
-                if (m.target.classList.contains('err')) openErrorRow(m.target);
+                openToolRow(m.target);
+              } else if (m.target.classList.contains('working-indicator')) {
+                ensureClock();
               }
             } else if (m.type === 'childList') {
               scan(m.target);

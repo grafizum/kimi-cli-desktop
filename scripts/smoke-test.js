@@ -203,8 +203,8 @@ ok(!preloadSrc.includes('writeInput') && !preloadSrc.includes('listSessions'),
 const guestSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'web-guest-preload.js'), 'utf8');
 ok(guestSrc.includes('tuiThinking') && guestSrc.includes('think-head'),
   'guest preload: keeps thinking blocks expanded like the TUI (Alt+click escape hatch)');
-ok(guestSrc.includes('setInterval') === false && guestSrc.includes('queueMicrotask'),
-  'guest preload: the enhancer is mutation-driven, not a polling loop');
+ok(guestSrc.split('setInterval').length === 2 && guestSrc.includes('queueMicrotask'),
+  'guest preload: mutation-driven; the only timer is the gated turn clock');
 
 // ---------------------------------------------------------------------------
 // 7. Packaging — a separate edition with separate artifacts
