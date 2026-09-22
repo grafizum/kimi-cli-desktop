@@ -292,6 +292,9 @@ async function detectWsl(env, allowTestDouble = false) {
 // Full detection flow. `opts`:
 //   explicitPath  — a user-configured path that takes priority (still probed)
 //   env           — environment override (tests)
+//   preferWsl     — probe WSL before the Windows candidates (set when the
+//                   session folder is a UNC path; the CLI must share the
+//                   folder's world). Windows candidates remain the fallback.
 // Returns { found, path, version, source, checked: [...] }
 // Probe a single candidate and return a detection result, or null when the
 // file is missing / not a working kimi binary.
@@ -340,7 +343,21 @@ async function detect(opts = {}) {
     if (hit) return accept(hit);
   }
 
-  // 2. PATH — one `where`/`which` call, the common case (fast path). Every
+  // 2. WSL-first when asked. A WSL (UNC) session folder requires the CLI
+  // inside WSL: a native Windows CLI cannot use a network-share home and its
+  // data layer dies there (ENOTSUP/EISDIR). When the shell knows the session
+  // folder lives in a distro, probe WSL before the Windows candidates so the
+  // CLI and the folder stay in the same world; Windows candidates remain the
+  // fallback if no WSL CLI exists.
+  if (opts.preferWsl && opts.allowWsl !== false) {
+    const wslFirst = await detectWsl(env, testHarness);
+    if (wslFirst) {
+      wslFirst.checked = checked;
+      return wslFirst;
+    }
+  }
+
+  // 3. PATH — one `where`/`which` call, the common case (fast path). Every
   // hit is probed in PATH order: an early hit that exists but cannot answer
   // `--version` (broken shim, wrong-OS script) must not mask a later one.
   for (const onPath of (await findOnPath(env)) || []) {

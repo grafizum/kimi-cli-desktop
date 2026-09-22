@@ -120,8 +120,12 @@ function startWebServer(opts = {}) {
       // binds 127.0.0.1 inside WSL, which on WSL2 is the same loopback the
       // Windows side reaches — so the webview URL needs no translation.
       const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+      // A cwd only makes sense inside the distro if it is a Linux path —
+      // a Windows cwd (C:\Users\...) cannot be cd'd in bash and kills the
+      // whole command. Drop it; KIMI_CODE_HOME drives everything else.
+      const wslCwd = opts.cwd && opts.cwd.startsWith('/') ? opts.cwd : '';
       const cmd = [
-        opts.cwd ? `cd ${q(opts.cwd)}` : '',
+        wslCwd ? `cd ${q(wslCwd)}` : '',
         opts.kimiCodeHome ? `export KIMI_CODE_HOME=${q(opts.kimiCodeHome)}` : '',
         'export TERM=xterm-256color',
         `exec ${q(opts.binary)} ${args.map(q).join(' ')}`,

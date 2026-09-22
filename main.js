@@ -161,15 +161,27 @@ function isWslMode() {
 }
 
 // Run detection, sharing the in-flight promise so concurrent callers both get
-// the real result instead of a stale one.
+// the real result instead of a stale one. When the configured session folder
+// is a WSL (UNC) path, WSL is probed FIRST (preferWsl): a native Windows CLI
+// cannot use a network-share home, so the CLI must come from the same world
+// as the folder — that mismatch is what killed the server on every prompt.
 function runDetection() {
   if (detectionPromise) return detectionPromise;
+  const homeIsUnc = /^\\\\/.test(settings.kimiCodeHome || '');
   detectionPromise = (async () => {
-    detection = await kimiDetect.detect({
-      explicitPath: settings.kimiPath || undefined,
-      env: currentEnv(),
-    });
+    try {
+      detection = await kimiDetect.detect({
+        explicitPath: settings.kimiPath || undefined,
+        env: currentEnv(),
+        preferWsl: homeIsUnc,
+      });
+    } catch (err) {
+      dbgBoot('detection THREW: ' + String((err && err.stack) || err).slice(0, 600));
+      throw err;
+    }
     detectionSettled = true;
+    dbgBoot('detection settled: found=' + detection.found + ' source=' + detection.source
+      + ' path=' + (detection.path || '-') + (detection.wsl ? ' distro=' + detection.wsl.distro : ''));
     return detection;
   })();
   detectionPromise.finally(() => { detectionPromise = null; }).catch(() => {});
@@ -226,6 +238,7 @@ async function ensureServer() {
   if (server && server.url) return serverStatus();
 
   serverStarting = true;
+  dbgBoot('ensureServer: starting (pendingRestart=' + pendingRestart + ')');
   send('web:status', serverStatus());
   try {
     if (!detectionSettled || !detection.found) await runDetection();
@@ -239,19 +252,27 @@ async function ensureServer() {
       return serverStatus();
     }
 
+    // In WSL mode the cwd must be a LINUX path (the server cd's inside the
+    // distro); otherwise use the Windows home.
+    const serverCwd = isWslMode() && detection.wsl
+      ? (detection.wsl.home || '/tmp')
+      : os.homedir();
     const srv = webSession.startWebServer({
       id: webSession.newId(),
       binary: detection.path,
       args: webSession.buildWebArgs({ mode: settings.defaultMode || 'default' }),
-      cwd: os.homedir(),
+      cwd: serverCwd,
       env: currentEnv(),
       kimiCodeHome: effectiveKimiCodeHome(),
       buildSpawn: kimiDetect.buildSpawn,
       wsl: isWslMode() ? detection.wsl : null,
     });
     server = srv;
+    dbgBoot('server spawned, waiting for URL');
     const result = await srv.promise;
     serverStarting = false;
+    dbgBoot('server promise resolved: ok=' + result.ok + ' url=' + (result.url || '-')
+      + (result.log ? ' logTail=' + String(result.log).split(/\r?\n/).filter(Boolean).slice(-1)[0].slice(0, 200) : ''));
 
     if (!result.ok || !webSession.isAllowedWebUrl(result.url)) {
       const detail = String(result.log || '').split(/\r?\n/).filter(Boolean).slice(-1)[0]
