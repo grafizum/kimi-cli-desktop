@@ -170,6 +170,11 @@ ok(appSrc.includes('updateTitle') && appSrc.includes('BASE_TITLE'),
   'app: the shell title reflects the lifecycle while cards are up');
 ok(appSrc.includes('chatLive') && /chatLive && chatTitle/.test(appSrc),
   'app: the guest title only owns the window while the chat is live');
+const appCode = appSrc.replace(/^\s*\/\/.*$/gm, ''); // comments may discuss the banned value
+ok(appCode.includes('openai:') && !appCode.includes('openai_legacy'),
+  'app: provider type is openai (kimi 2.0.2 rejects openai_legacy without explicit protocol fields)');
+ok(!/value="openai_legacy"/.test(html),
+  'index: the type dropdown no longer offers openai_legacy');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
 ok(css.includes('.webview-live') && !/display:\s*none[^}]*(#chat|webview)/.test(css),

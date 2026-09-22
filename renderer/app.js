@@ -181,9 +181,12 @@ document.getElementById('btn-copy-cmd').addEventListener('click', () => {
 // custom API platforms or a local llama served by Ollama / llama.cpp /
 // LM Studio — and saves after validating the file with the CLI itself.
 
+// Provider types accepted by kimi 2.0.2's config. NOTE: `openai` (NOT
+// `openai_legacy`) — verified live: kimi infers the wire protocol from the
+// provider type, while `openai_legacy` blocks fail with "must declare a wire
+// protocol" unless every model also carries an explicit `protocol` field.
 const MODEL_CAPS_DOC = {
-  openai_legacy: 'OpenAI-compatible endpoints — Ollama (http://localhost:11434/v1), llama.cpp server (http://localhost:8080/v1), LM Studio (http://localhost:1234/v1), OpenRouter, …',
-  openai_responses: 'The newer OpenAI Responses API format',
+  openai: 'OpenAI-compatible endpoints — Ollama (http://localhost:11434/v1), llama.cpp server (http://localhost:8080/v1), LM Studio (http://localhost:1234/v1), OpenRouter, OmniRoute (http://localhost:20128/v1), …',
   anthropic: 'Anthropic Claude API',
   gemini: 'Google Gemini API',
   kimi: 'Kimi / Moonshot platform',
