@@ -253,17 +253,23 @@ async function ensureServer() {
     }
 
     // In WSL mode the cwd must be a LINUX path (the server cd's inside the
-    // distro); otherwise use the Windows home.
+    // distro); otherwise use the Windows home. Same for the session home:
+    // inside the distro kimi needs the LINUX path — exporting the UNC form
+    // made it create a literal "\\wsl.localhost\..." directory and miss the
+    // real ~/.kimi-code (sessions looked gone).
     const serverCwd = isWslMode() && detection.wsl
       ? (detection.wsl.home || '/tmp')
       : os.homedir();
+    const serverHome = isWslMode() && detection.wsl
+      ? (detection.wsl.kimiCodeHome || '')
+      : effectiveKimiCodeHome();
     const srv = webSession.startWebServer({
       id: webSession.newId(),
       binary: detection.path,
       args: webSession.buildWebArgs({ mode: settings.defaultMode || 'default' }),
       cwd: serverCwd,
       env: currentEnv(),
-      kimiCodeHome: effectiveKimiCodeHome(),
+      kimiCodeHome: serverHome,
       buildSpawn: kimiDetect.buildSpawn,
       wsl: isWslMode() ? detection.wsl : null,
     });
