@@ -77,20 +77,20 @@ try {
   // --- TUI mode ---------------------------------------------------------------
   if (appearance && appearance.tuiThinking) {
     const TUI_CSS = [
-      ':root{--kcd-think-accent:#3fb27f;--kcd-think-text:#b9c6d2;--kcd-think-dim:#7e8c9a;--kcd-err:#ff6369;--kcd-pill-bg:#10151add;}',
-      ':root[data-color-scheme="light"]{--kcd-think-accent:#187f56;--kcd-think-text:#414d59;--kcd-think-dim:#87939f;--kcd-err:#c4323a;--kcd-pill-bg:#f4f6f8ee;}',
+      ':root{--kcd-think-bar:#4d9fff;--kcd-think-accent:#3fb27f;--kcd-think-text:#b9c6d2;--kcd-think-dim:#7e8c9a;--kcd-err:#ff6369;--kcd-pill-bg:#10151add;}',
+      ':root[data-color-scheme="light"]{--kcd-think-bar:#1f6fd6;--kcd-think-accent:#187f56;--kcd-think-text:#414d59;--kcd-think-dim:#87939f;--kcd-err:#c4323a;--kcd-pill-bg:#f4f6f8ee;}',
       '.think .think-head .think-title{color:var(--kcd-think-dim);font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;font-size:.82em;letter-spacing:.02em;}',
-      '.think.streaming .think-head .think-title{color:var(--kcd-think-accent);}',
+      '.think.streaming .think-head .think-title{color:var(--kcd-think-bar);}',
       '.think .think-time{color:var(--kcd-think-dim);font-variant-numeric:tabular-nums;}',
       '.think pre.think-text{',
       '  font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono","Fira Code",Menlo,monospace;',
       '  font-size:.84em;line-height:1.55;text-align:left;',
       '  color:var(--kcd-think-text);',
-      '  background:color-mix(in srgb,var(--kcd-think-accent) 7%,transparent);',
-      '  border-left:2px solid color-mix(in srgb,var(--kcd-think-accent) 55%,transparent);',
+      '  background:transparent;',
+      '  border-left:2px solid var(--kcd-think-bar);',
       '  border-radius:0 8px 8px 0;margin:6px 0;padding:10px 14px;max-width:96ch;',
       '  white-space:pre-wrap;overflow-wrap:anywhere;}',
-      '.think.streaming pre.think-text::after{content:"\\25CD";color:var(--kcd-think-accent);margin-left:2px;animation:kcd-caret 1s steps(2,start) infinite;}',
+      '.think.streaming pre.think-text::after{content:"\\25CD";color:var(--kcd-think-bar);margin-left:2px;animation:kcd-caret 1s steps(2,start) infinite;}',
       '@keyframes kcd-caret{to{visibility:hidden;}}',
       '@media (prefers-reduced-motion:reduce){.think.streaming pre.think-text::after{animation:none;}}',
       // Tool activity rows — the CLI's colored-log look.
