@@ -27,6 +27,22 @@
 //    Only real header clicks are synthesized (the same handler the user's
 //    click runs), and only on state CHANGES, so the loop cost is ~nothing.
 //
+// 3. Terminal look for the reasoning itself. The web bundle renders the
+//    thinking body as a plain <pre class="think-text"> — monochrome, chat
+//    font (verified against the kimi 2.0.2 bundle). The CLI shows reasoning
+//    as a tinted monospace block with a live caret; a small stylesheet
+//    mirrors that here (theme-aware via data-color-scheme, which this
+//    preload already seeds). Purely cosmetic — if the class names ever
+//    change in a kimi update, nothing breaks, the text just renders plain.
+//
+// 4. CLI-style tool activity rows. Same story for the Plan/Skill/tool lines
+//    (bundle class `tool-line`): the web renders them in the chat font with
+//    an uncolored status chip, while the terminal colors them (red error
+//    rows, green running state, mono text) and always shows errors inline.
+//    Here: mono styling + status colors via CSS, and an error row is clicked
+//    open ONCE so its details are visible immediately (Alt+click hands the
+//    row back to the user, same escape hatch as the thinking blocks).
+//
 // Sandboxed preload: `electron` here exposes only the safe renderer APIs
 // (ipcRenderer among them) — no Node, no fs, nothing else.
 
@@ -48,6 +64,43 @@ try {
 
   // --- TUI-thinking mode ----------------------------------------------------
   if (appearance && appearance.tuiThinking) {
+    // Terminal styling for the reasoning block (see header comment, point 3).
+    try {
+      if (!document.getElementById('kcd-tui-thinking-style')) {
+        const st = document.createElement('style');
+        st.id = 'kcd-tui-thinking-style';
+        st.textContent = [
+          ':root{--kcd-think-accent:#3fb27f;--kcd-think-text:#b9c6d2;--kcd-think-dim:#7e8c9a;}',
+          ':root[data-color-scheme="light"]{--kcd-think-accent:#187f56;--kcd-think-text:#414d59;--kcd-think-dim:#87939f;}',
+          '.think .think-head .think-title{color:var(--kcd-think-dim);font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;font-size:.82em;letter-spacing:.02em;}',
+          '.think.streaming .think-head .think-title{color:var(--kcd-think-accent);}',
+          '.think .think-time{color:var(--kcd-think-dim);font-variant-numeric:tabular-nums;}',
+          '.think pre.think-text{',
+          '  font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono","Fira Code",Menlo,monospace;',
+          '  font-size:.84em;line-height:1.55;text-align:left;',
+          '  color:var(--kcd-think-text);',
+          '  background:color-mix(in srgb,var(--kcd-think-accent) 7%,transparent);',
+          '  border-left:2px solid color-mix(in srgb,var(--kcd-think-accent) 55%,transparent);',
+          '  border-radius:0 8px 8px 0;margin:6px 0;padding:10px 14px;max-width:96ch;',
+          '  white-space:pre-wrap;overflow-wrap:anywhere;}',
+          '.think.streaming pre.think-text::after{content:"\\25CD";color:var(--kcd-think-accent);margin-left:2px;animation:kcd-caret 1s steps(2,start) infinite;}',
+          '@keyframes kcd-caret{to{visibility:hidden;}}',
+          '@media (prefers-reduced-motion:reduce){.think.streaming pre.think-text::after{animation:none;}}',
+          // Tool activity rows — the CLI's colored-log look (see point 4).
+          '.tool-line,.tool-line .tl-lead,.tool-line .tl-head{font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;}',
+          '.tool-line .tl-lead{color:var(--kcd-think-text);font-size:.84em;}',
+          '.tool-line .tl-status.running,.tool-line .tl-status.suspended{color:var(--kcd-think-accent);}',
+          '.tool-line .tl-status.error,.tool-line .tl-status.cancelled{color:var(--kcd-err);}',
+          '.tool-line.err{box-shadow:inset 2px 0 0 var(--kcd-err);background:color-mix(in srgb,var(--kcd-err) 6%,transparent);border-radius:6px;}',
+          '.tool-line .tl-body-content,.tool-line .tl-body pre,.tool-line .tl-body code{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.84em;line-height:1.5;color:var(--kcd-think-text);}',
+          '.tool-line.err .tl-body-content{color:color-mix(in srgb,var(--kcd-err) 80%,var(--kcd-think-text));}',
+          ':root{--kcd-err:#ff6369;}',
+          ':root[data-color-scheme="light"]{--kcd-err:#c4323a;}',
+        ].join('\n');
+        (document.head || document.documentElement).appendChild(st);
+      }
+    } catch { /* cosmetic only — ignore */ }
+
     const userManaged = new WeakSet(); // blocks the user took over via Alt+click
     let scanning = false;
 
@@ -58,6 +111,15 @@ try {
 
     function isOpen(block) {
       return block.classList.contains('open');
+    }
+
+    // Error tool rows: open once so the failure is readable immediately,
+    // the way the terminal prints errors inline instead of behind a chevron.
+    function openErrorRow(row) {
+      if (userManaged.has(row) || row.dataset.tuiErrOpen === '1') return;
+      row.dataset.tuiErrOpen = '1';
+      const head = row.querySelector('.tl-head');
+      if (head instanceof HTMLElement) head.click();
     }
 
     function enforceTui(block) {
@@ -83,6 +145,9 @@ try {
             b.dataset.tui = '1';
             if (b.classList.contains('streaming') || b.dataset.tuiWasStreaming === '1') enforceTui(b);
           }
+          const errRows = (root instanceof Element ? root : document)
+            .querySelectorAll('.tool-line.err:not([data-tui-err-open])');
+          for (const r of errRows) openErrorRow(r);
         } catch { /* a detached node raced us — the next mutation rescan covers it */ }
       });
     }
@@ -90,11 +155,21 @@ try {
     document.addEventListener('click', (e) => {
       try {
         if (!(e.altKey)) return;
-        const head = e.target && e.target.closest ? e.target.closest('.think-head') : null;
-        const block = head && head.closest('.think');
-        if (block) {
-          userManaged.add(block); // Alt+click = "I'll drive this one myself"
-          block.dataset.tui = 'manual';
+        const el = e.target && e.target.closest ? e.target : null;
+        if (!el) return;
+        const thinkHead = el.closest('.think-head');
+        if (thinkHead) {
+          const block = thinkHead.closest('.think');
+          if (block) {
+            userManaged.add(block); // Alt+click = "I'll drive this one myself"
+            block.dataset.tui = 'manual';
+          }
+          return;
+        }
+        const toolHead = el.closest('.tl-head');
+        if (toolHead) {
+          const row = toolHead.closest('.tool-line');
+          if (row) userManaged.add(row); // same escape hatch for tool rows
         }
       } catch { /* never break the guest's own handlers */ }
     }, true);
@@ -104,9 +179,12 @@ try {
         scan(document);
         new MutationObserver((muts) => {
           for (const m of muts) {
-            if (m.type === 'attributes' && m.target instanceof Element
-              && m.target.classList.contains('think')) {
-              enforceTui(m.target); // streaming edge — cheap, targeted
+            if (m.type === 'attributes' && m.target instanceof Element) {
+              if (m.target.classList.contains('think')) {
+                enforceTui(m.target); // streaming edge — cheap, targeted
+              } else if (m.target.classList.contains('tool-line')) {
+                if (m.target.classList.contains('err')) openErrorRow(m.target);
+              }
             } else if (m.type === 'childList') {
               scan(m.target);
             }
