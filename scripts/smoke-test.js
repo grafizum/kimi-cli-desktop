@@ -166,6 +166,10 @@ ok(appSrc.includes('ResizeObserver') && appSrc.includes('syncChatSize'),
   'app: the webview is pixel-synced (no black-rectangle bug)');
 ok(!appSrc.includes('xterm') && !appSrc.includes('new Tab('),
   'app: no terminal or tab machinery in the web edition');
+ok(appSrc.includes('updateTitle') && appSrc.includes('BASE_TITLE'),
+  'app: the shell title reflects the lifecycle while cards are up');
+ok(appSrc.includes('chatLive') && /chatLive && chatTitle/.test(appSrc),
+  'app: the guest title only owns the window while the chat is live');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
 ok(css.includes('.webview-live') && !/display:\s*none[^}]*(#chat|webview)/.test(css),

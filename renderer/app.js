@@ -26,6 +26,33 @@ let lastLoadedUrl = '';   // the URL currently in the webview (dedupe reloads)
 let lastFatalError = '';  // what the error card is showing
 
 // ---------------------------------------------------------------------------
+// Window title
+// ---------------------------------------------------------------------------
+// The title always says what the app is doing. While a lifecycle card is up
+// (starting / setup / error) the shell owns the title and describes the state;
+// once the chat is live the guest's own title takes over completely.
+
+const BASE_TITLE = 'Kimi Code Desktop';
+let chatLive = false; // the guest is showing — it owns the title
+let chatTitle = '';   // last title the guest reported
+
+function updateTitle(st) {
+  if (chatLive) {
+    if (chatTitle) document.title = chatTitle;
+    return;
+  }
+  const kimi = st.kimi || {};
+  const found = !!(st.running || st.starting || kimi.found);
+  if (st.running) document.title = `${BASE_TITLE} — connecting…`;
+  else if (st.starting) document.title = `${BASE_TITLE} — starting the CLI…`;
+  else if (!found) document.title = kimi.pending
+    ? `${BASE_TITLE} — looking for the CLI…`
+    : `${BASE_TITLE} — CLI not found`;
+  else if (st.lastError) document.title = `${BASE_TITLE} — couldn't start the chat`;
+  else document.title = BASE_TITLE;
+}
+
+// ---------------------------------------------------------------------------
 // State cards
 // ---------------------------------------------------------------------------
 
@@ -35,14 +62,14 @@ function showCard(which) {
   el.errorState.hidden = which !== 'error';
   // The live webview stays laid out underneath every card (visibility rule in
   // styles.css); it only becomes visible when a URL is actually loaded.
-  el.chat.classList.toggle('webview-live', which === 'chat' && !!lastLoadedUrl);
+  chatLive = which === 'chat' && !!lastLoadedUrl;
+  el.chat.classList.toggle('webview-live', chatLive);
 }
 
 function renderStatus(st) {
   const kimi = st.kimi || {};
   const found = !!(st.running || st.starting || kimi.found);
-
-  // Status bar
+  updateTitle(st);
   el.statusLeft.textContent = kimi.found
     ? `kimi ${kimi.version || ''}${st.wsl ? ` · ${st.wsl.distro}` : ''}`
     : 'Kimi Code CLI not found';
@@ -125,8 +152,10 @@ el.chat.addEventListener('render-process-gone', () => {
   api.ensureWeb().then(renderStatus);
 });
 el.chat.addEventListener('page-title-updated', (e) => {
-  // The guest is the app's face; surface its title in the shell chrome.
-  if (e.title) document.title = e.title;
+  // The guest is the app's face; surface its title in the shell chrome — but
+  // only while it is actually live, so a stale guest can't mask a state card.
+  chatTitle = e.title || '';
+  if (chatLive && chatTitle) document.title = chatTitle;
 });
 
 // ---------------------------------------------------------------------------
