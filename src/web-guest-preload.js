@@ -1,8 +1,8 @@
 'use strict';
 
 // Guest preload for the chat <webview> — runs INSIDE the embedded Kimi web UI
-// before any of its scripts. Two jobs, both hint-only (the UI keeps working if
-// any of this fails):
+// before any of its scripts. Everything here is hint-only: if any part fails,
+// the web UI keeps working untouched.
 //
 // 1. Appearance + onboarding seeds. The web UI reads `kimi-web.color-scheme`
 //    and `kimi-web.font-scale` from localStorage in its boot.js pre-paint
@@ -11,48 +11,44 @@
 //    app. The served URL also carries ?kimi_onboarded=1 (the UI's official
 //    skip); seeding the flag covers partitions holding stale state.
 //
-// 2. TUI-thinking mode (the shell's "terminal feel" ask). In the CLI's
-//    terminal UI the model's reasoning streams FULLY VISIBLE while it thinks;
-//    the web UI collapses every thinking block to a small pill and re-collapses
-//    it the moment streaming ends (verified in the 2.0.2 bundle: the block's
-//    state watcher sets open=false on the streaming→idle edge, and the open
-//    state is per-session component state — not a localStorage pref — so it
-//    cannot be seeded). When the shell asks for TUI mode, this preload watches
-//    the DOM and keeps blocks expanded the way the terminal shows them:
-//      - a block that gains the `streaming` class is clicked open once;
-//      - a block that LOSES `streaming` (the auto-collapse edge) is clicked
-//        open again, once, so the finished reasoning stays readable;
-//      - Alt+click on a block marks it user-managed: the enhancer never
-//        touches that block again, so collapsing/expanding by hand works.
-//    Only real header clicks are synthesized (the same handler the user's
-//    click runs), and only on state CHANGES, so the loop cost is ~nothing.
+// 2. TUI mode — EVERYTHING expanded, at every level. In the CLI's terminal,
+//    all work feedback is visible: the reasoning streams open, every tool
+//    call shows its args/result/error, nothing hides behind a chevron. The
+//    web UI collapses at FOUR separate layers (verified in the 2.0.2 bundle):
+//      .turn-fold   — whole turns ("1 tool call (1 failed) · 2m18s"); its
+//                     children are NOT in the DOM while it is closed
+//      .ar-head     — ActivityRun groups (consecutive same-kind tools)
+//      .tl-head     — individual tool rows (args/results hidden)
+//      .think-head  — reasoning blocks (default-collapsed, and force-
+//                     collapsed again the moment a stream ends)
+//    The open state of all four is per-session component state — not a
+//    localStorage pref — so it cannot be seeded. Instead, when the shell
+//    asks for TUI mode, this preload runs one generic expansion pass driven
+//    by each header button's aria-expanded: any header still reading
+//    "collapsed" is clicked once (the same handler a user click runs). A
+//    small per-button attempt budget guards against fighting a re-collapse,
+//    and Alt+click on any header hands that block back to the user forever.
+//    Opening a fold makes its children appear, which triggers the observer,
+//    which expands those children — the whole tree opens top-down.
 //
-// 3. Terminal look for the reasoning itself. The web bundle renders the
-//    thinking body as a plain <pre class="think-text"> — monochrome, chat
-//    font (verified against the kimi 2.0.2 bundle). The CLI shows reasoning
-//    as a tinted monospace block with a live caret; a small stylesheet
-//    mirrors that here (theme-aware via data-color-scheme, which this
-//    preload already seeds). Purely cosmetic — if the class names ever
-//    change in a kimi update, nothing breaks, the text just renders plain.
+// 3. Terminal look. The web renders reasoning as a plain chat-font <pre> and
+//    tool rows in the chat font with uncolored status. A small theme-aware
+//    stylesheet mirrors the CLI here: tinted monospace reasoning with a live
+//    caret, mono tool rows with red error / green running status. Purely
+//    cosmetic — if class names ever change in a kimi update, the text just
+//    renders plain, nothing breaks.
 //
-// 4. CLI-style tool activity rows. Same story for the Plan/Skill/tool lines
-//    (bundle class `tool-line`): the web renders them in the chat font with
-//    an uncolored status chip, while the terminal colors them (red error
-//    rows, green running state, mono text) and always shows errors inline.
-//    Here: mono styling + status colors via CSS, and every expandable row is
-//    clicked open once so args/results/errors are visible immediately — the
-//    terminal never hides tool feedback behind a chevron (Alt+click hands the
-//    row back to the user, same escape hatch as the thinking blocks).
-//
-// 5. Precise live status. The web's working indicator only ever says
+// 4. Precise live status. The web's own working indicator only ever says
 //    "Requesting…"/"Working…" (verified: its label computed switches between
-//    two generic i18n strings), while the CLI reports WHAT it is doing and
-//    for how long. The enhancer derives the real activity from the DOM — the
-//    running tool row's own label, else the streaming reasoning block — and
-//    rewrites the indicator as "<activity> · <elapsed>", ticking via a single
-//    1s clock that runs ONLY while a turn is active. No DOM polling: the
-//    MutationObserver drives everything else, and the clock self-clears the
-//    moment the indicator goes idle.
+//    two generic i18n strings), and it gives no elapsed time. The CLI shows
+//    WHAT it is doing and for HOW LONG, from the moment a prompt is sent.
+//    So this preload owns its status pill (#kcd-status, bottom-right): it
+//    appears as soon as a turn is active (kimi's indicator active, OR a
+//    reasoning block streaming, OR a tool running), shows the real activity
+//    — the running tool's own label, else "Thinking", else "Working" — and
+//    ticks the elapsed turn time. One gated 1s clock total: it starts with
+//    the turn and clears itself the moment activity ends. No DOM polling;
+//    the MutationObserver drives all other updates.
 //
 // Sandboxed preload: `electron` here exposes only the safe renderer APIs
 // (ipcRenderer among them) — no Node, no fs, nothing else.
@@ -73,16 +69,16 @@ try {
     }
   } catch { /* storage disabled — the UI keeps its own defaults */ }
 
-  // --- TUI-thinking mode ----------------------------------------------------
+  // --- TUI mode ---------------------------------------------------------------
   if (appearance && appearance.tuiThinking) {
-    // Terminal styling for the reasoning block (see header comment, point 3).
+    // Terminal styling (see header comment, point 3).
     try {
       if (!document.getElementById('kcd-tui-thinking-style')) {
         const st = document.createElement('style');
         st.id = 'kcd-tui-thinking-style';
         st.textContent = [
-          ':root{--kcd-think-accent:#3fb27f;--kcd-think-text:#b9c6d2;--kcd-think-dim:#7e8c9a;}',
-          ':root[data-color-scheme="light"]{--kcd-think-accent:#187f56;--kcd-think-text:#414d59;--kcd-think-dim:#87939f;}',
+          ':root{--kcd-think-accent:#3fb27f;--kcd-think-text:#b9c6d2;--kcd-think-dim:#7e8c9a;--kcd-err:#ff6369;--kcd-pill-bg:#10151add;}',
+          ':root[data-color-scheme="light"]{--kcd-think-accent:#187f56;--kcd-think-text:#414d59;--kcd-think-dim:#87939f;--kcd-err:#c4323a;--kcd-pill-bg:#f4f6f8ee;}',
           '.think .think-head .think-title{color:var(--kcd-think-dim);font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;font-size:.82em;letter-spacing:.02em;}',
           '.think.streaming .think-head .think-title{color:var(--kcd-think-accent);}',
           '.think .think-time{color:var(--kcd-think-dim);font-variant-numeric:tabular-nums;}',
@@ -97,18 +93,23 @@ try {
           '.think.streaming pre.think-text::after{content:"\\25CD";color:var(--kcd-think-accent);margin-left:2px;animation:kcd-caret 1s steps(2,start) infinite;}',
           '@keyframes kcd-caret{to{visibility:hidden;}}',
           '@media (prefers-reduced-motion:reduce){.think.streaming pre.think-text::after{animation:none;}}',
-          // Tool activity rows — the CLI's colored-log look (see point 4).
-          '.tool-line,.tool-line .tl-lead,.tool-line .tl-head{font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;}',
+          // Tool activity rows — the CLI's colored-log look.
+          '.tool-line,.tool-line .tl-lead,.tool-line .tl-head,.turn-fold .tf-head{font-family:ui-monospace,"Cascadia Mono",Consolas,"JetBrains Mono",Menlo,monospace;}',
           '.tool-line .tl-lead{color:var(--kcd-think-text);font-size:.84em;}',
           '.tool-line .tl-status.running,.tool-line .tl-status.suspended{color:var(--kcd-think-accent);}',
           '.tool-line .tl-status.error,.tool-line .tl-status.cancelled{color:var(--kcd-err);}',
           '.tool-line.err{box-shadow:inset 2px 0 0 var(--kcd-err);background:color-mix(in srgb,var(--kcd-err) 6%,transparent);border-radius:6px;}',
           '.tool-line .tl-body-content,.tool-line .tl-body pre,.tool-line .tl-body code{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.84em;line-height:1.5;color:var(--kcd-think-text);}',
           '.tool-line.err .tl-body-content{color:color-mix(in srgb,var(--kcd-err) 80%,var(--kcd-think-text));}',
-          ':root{--kcd-err:#ff6369;}',
-          ':root[data-color-scheme="light"]{--kcd-err:#c4323a;}',
-          // Status pill — terminal log line look (see point 5).
-          '.working-indicator .wi-label{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.8em;color:var(--kcd-think-text);}',
+          // The owned status pill (see header comment, point 4).
+          '#kcd-status{position:fixed;right:14px;bottom:12px;z-index:2147483000;display:flex;align-items:center;gap:8px;pointer-events:none;',
+          '  font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:.78em;letter-spacing:.01em;',
+          '  color:var(--kcd-think-text);background:var(--kcd-pill-bg);',
+          '  border:1px solid color-mix(in srgb,var(--kcd-think-accent) 30%,transparent);border-radius:999px;padding:6px 12px;',
+          '  box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:min(60vw,560px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+          '#kcd-status::before{content:"\\25CF";color:var(--kcd-think-accent);font-size:.85em;animation:kcd-pulse 1.2s ease-in-out infinite;}',
+          '@keyframes kcd-pulse{0%,100%{opacity:1;}50%{opacity:.3;}}',
+          '@media (prefers-reduced-motion:reduce){#kcd-status::before{animation:none;}}',
         ].join('\n');
         (document.head || document.documentElement).appendChild(st);
       }
@@ -116,95 +117,71 @@ try {
 
     const userManaged = new WeakSet(); // blocks the user took over via Alt+click
     let scanning = false;
+    let turnStart = 0;
+    let clock = null;
+    let pill = null;
 
-    function clickHeader(block) {
-      const head = block.querySelector('.think-head');
-      if (head instanceof HTMLElement) head.click();
+    // Every disclosure layer the web UI can collapse (see header, point 2).
+    const HEADS = '.tf-head,.ar-head,.tl-head.clickable,.think-head';
+
+    function rootOf(head) {
+      return head.closest('.turn-fold,.tool-line,.think') || head;
     }
 
-    function isOpen(block) {
-      return block.classList.contains('open');
-    }
-
-    // Tool rows: open once so args/results/errors are visible immediately —
-    // the terminal never hides tool feedback behind a chevron. A small
-    // attempt budget guards against fighting a row the UI re-collapses;
-    // Alt+click permanently hands a row back to the user.
-    function openToolRow(row) {
-      if (userManaged.has(row)) return;
-      const head = row.querySelector('.tl-head.clickable');
+    // Click a collapsed header open once (the same handler a user click
+    // runs). The attempt budget stops us from dueling with a re-collapse;
+    // Alt+clicked blocks are never touched again.
+    function expandOnce(head) {
       if (!(head instanceof HTMLElement)) return;
-      if (row.dataset.tuiRowOpen === '1' && row.classList.contains('open')) return;
-      const tries = Number(row.dataset.tuiRowTries || '0');
+      if (head.getAttribute('aria-expanded') !== 'false') return;
+      const root = rootOf(head);
+      if (userManaged.has(root)) return;
+      const tries = Number(head.dataset.kcdTries || '0');
       if (tries >= 3) return;
-      row.dataset.tuiRowTries = String(tries + 1);
-      row.dataset.tuiRowOpen = '1';
+      head.dataset.kcdTries = String(tries + 1);
       head.click();
     }
 
-    function enforceTui(block) {
-      if (userManaged.has(block)) return;
-      const streaming = block.classList.contains('streaming');
-      // Open while streaming (with the TUI's live-scroll behavior), and
-      // re-open once on the streaming→finished edge (the UI's auto-collapse).
-      if ((streaming || block.dataset.tuiWasStreaming === '1') && !isOpen(block)) {
-        clickHeader(block);
-      }
-      block.dataset.tuiWasStreaming = streaming ? '1' : '0';
+    function expandAll(scope) {
+      const root = scope instanceof Element ? scope : document;
+      if (root.matches && root.matches(HEADS)) expandOnce(root);
+      for (const h of root.querySelectorAll ? root.querySelectorAll(HEADS) : []) expandOnce(h);
     }
 
-    function scan(root) {
+    function scan(target) {
       if (scanning) return;
       scanning = true;
       queueMicrotask(() => {
         scanning = false;
         try {
-          const blocks = (root instanceof Element ? root : document)
-            .querySelectorAll('.think:not([data-tui])');
-          for (const b of blocks) {
-            b.dataset.tui = '1';
-            if (b.classList.contains('streaming') || b.dataset.tuiWasStreaming === '1') enforceTui(b);
-          }
-          const rows = (root instanceof Element ? root : document)
-            .querySelectorAll('.tool-line:not([data-tui-row-open])');
-          for (const r of rows) openToolRow(r);
+          expandAll(target instanceof Element ? target : document);
           ensureClock();
         } catch { /* a detached node raced us — the next mutation rescan covers it */ }
       });
     }
 
+    // Alt+click = "I'll drive this one myself" — the enhancer never touches
+    // that block again.
     document.addEventListener('click', (e) => {
       try {
-        if (!(e.altKey)) return;
+        if (!e.altKey) return;
         const el = e.target && e.target.closest ? e.target : null;
         if (!el) return;
-        const thinkHead = el.closest('.think-head');
-        if (thinkHead) {
-          const block = thinkHead.closest('.think');
-          if (block) {
-            userManaged.add(block); // Alt+click = "I'll drive this one myself"
-            block.dataset.tui = 'manual';
-          }
-          return;
-        }
-        const toolHead = el.closest('.tl-head');
-        if (toolHead) {
-          const row = toolHead.closest('.tool-line');
-          if (row) userManaged.add(row); // same escape hatch for tool rows
-        }
+        const head = el.closest('.tf-head,.ar-head,.tl-head,.think-head');
+        if (head) userManaged.add(rootOf(head));
       } catch { /* never break the guest's own handlers */ }
     }, true);
 
-    // Precise live status (see header comment, point 5). One gated clock,
-    // no DOM polling: the tick only rewrites the indicator label while a
-    // turn is active and stops the moment the indicator goes away. Vue's
-    // own re-renders restore its generic text; the observer repaints ours.
-    let turnStart = 0;
-    let clock = null;
-
+    // --- owned live status (see header comment, point 4) ----------------------
     function fmtDur(ms) {
       const s = Math.max(1, Math.round(ms / 1000));
       return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+    }
+
+    function isActive() {
+      return !!document.querySelector(
+        '.working-indicator:not(.idle), .think.streaming, .tool-line .tl-status.running, .turn-fold.streaming'
+      );
     }
 
     function currentActivity() {
@@ -220,28 +197,22 @@ try {
     }
 
     function paintStatus() {
-      for (const ind of document.querySelectorAll('.working-indicator:not(.idle)')) {
-        const label = ind.querySelector('.wi-label');
-        if (!(label instanceof HTMLElement)) continue;
-        const dur = fmtDur(Date.now() - (turnStart || Date.now()));
-        const raw = label.textContent || '';
-        const base = currentActivity()
-          || raw.replace(/\s·\s\d+(s|m\s\d\ds)$/, ''); // strip our own suffix
-        const next = base ? base + ' · ' + dur : '';
-        if (next && label.textContent !== next) label.textContent = next;
-      }
+      if (!pill) return;
+      const act = currentActivity() || 'Working';
+      pill.textContent = act + ' \u00B7 ' + fmtDur(Date.now() - (turnStart || Date.now()));
+      pill.style.display = '';
     }
 
     function ensureClock() {
-      const anyActive = document.querySelector('.working-indicator:not(.idle)');
-      if (anyActive) {
+      if (isActive()) {
         if (!turnStart) turnStart = Date.now();
         paintStatus();
         if (clock === null) {
           clock = setInterval(() => {
             try {
-              if (!document.querySelector('.working-indicator:not(.idle)')) {
+              if (!isActive()) {
                 clearInterval(clock); clock = null; turnStart = 0;
+                if (pill) pill.style.display = 'none';
                 return;
               }
               paintStatus();
@@ -250,26 +221,32 @@ try {
         }
       } else if (clock !== null) {
         clearInterval(clock); clock = null; turnStart = 0;
+        if (pill) pill.style.display = 'none';
       }
     }
 
     const start = () => {
       try {
+        pill = document.createElement('div');
+        pill.id = 'kcd-status';
+        pill.style.display = 'none';
+        pill.setAttribute('role', 'status');
+        document.body.appendChild(pill);
+
         scan(document);
         new MutationObserver((muts) => {
           for (const m of muts) {
             if (m.type === 'attributes' && m.target instanceof Element) {
-              if (m.target.classList.contains('think')) {
-                enforceTui(m.target); // streaming edge — cheap, targeted
-              } else if (m.target.classList.contains('tool-line')) {
-                openToolRow(m.target);
-              } else if (m.target.classList.contains('working-indicator')) {
-                ensureClock();
+              // Class flips are the re-collapse edges (fold closed, thinking
+              // auto-collapsed, row finished) — re-run the expansion there.
+              if (m.target.matches(HEADS) || m.target.querySelector(HEADS)) {
+                expandAll(m.target);
               }
             } else if (m.type === 'childList') {
               scan(m.target);
             }
           }
+          ensureClock();
         }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
       } catch { /* body not ready — DOMContentLoaded retry below */ }
     };
